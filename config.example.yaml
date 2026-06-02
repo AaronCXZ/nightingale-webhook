@@ -1,0 +1,45 @@
+server:
+  port: 8080
+
+# 阿里云语音服务配置
+# aliyun:
+#   access_key_id: "your-access-key-id"
+#   access_key_secret: "your-access-key-secret"
+#   called_show_number: "0571XXXXXXXX"
+#   tts_code: "TTS_XXXXXXXXXX"
+#   play_times: 2
+
+alert:
+  min_severity: 2        # 1=仅严重, 2=警告及以上, 3=全部
+  cooldown: 15m          # 同一告警hash去重窗口
+  group_cooldown: 5m     # 同一业务组限流窗口
+  max_concurrent_calls: 5
+
+retry:
+  max_attempts: 3
+  backoff_base: 1s
+
+dry_run: true
+
+storage:
+  db_path: "data/webhook.db"
+  call_retention: 720h
+
+always_phones:
+  # - "13600000000"
+
+server_groups:
+  # "业务组A":
+  #   phones:
+  #     - "13800001111"
+
+default_phones:
+  # - "13600000000"
+
+logging:
+  level: "debug"
+  format: "text"
+  output: ""             # 日志文件路径，为空则仅 stdout
+  max_size: 10           # 单日志文件最大 MB
+  max_age: 7             # 日志保留天数
+  max_backups: 5         # 最多保留旧日志文件数

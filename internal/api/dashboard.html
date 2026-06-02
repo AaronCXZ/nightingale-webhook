@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webhook 监控面板</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d2991d;
+  --blue: #58a6ff;
+  --purple: #a371f7;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size:13px; line-height:1.5; }
+.header { background:var(--bg-card); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; }
+.header h1 { font-size:16px; color:var(--green); }
+.header .info { color:var(--text-muted); font-size:12px; }
+.dryrun-banner { background:var(--yellow); color:#000; text-align:center; padding:4px; font-weight:bold; font-size:12px; display:none; }
+.dryrun-banner.show { display:block; }
+.container { max-width:1400px; margin:0 auto; padding:20px; }
+.cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:16px; }
+.card .label { color:var(--text-muted); font-size:11px; text-transform:uppercase; margin-bottom:4px; }
+.card .value { font-size:24px; font-weight:bold; }
+.card .value.green { color:var(--green); }
+.card .value.red { color:var(--red); }
+.card .value.yellow { color:var(--yellow); }
+.section { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:16px; margin-bottom:16px; }
+.section h2 { font-size:14px; color:var(--blue); margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); font-size:12px; }
+th { color:var(--text-muted); font-weight:normal; text-transform:uppercase; font-size:11px; }
+.status-pending { color:var(--text-muted); }
+.status-initiated { color:var(--yellow); }
+.status-answered { color:var(--green); }
+.status-no_answer { color:var(--yellow); }
+.status-busy { color:var(--red); }
+.status-failed { color:var(--red); }
+.btn { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:12px; }
+.btn:hover { background:var(--border); }
+.btn-primary { background:var(--green); color:#000; border-color:var(--green); }
+.btn-primary:hover { opacity:0.9; }
+.btn-danger { background:var(--red); color:#fff; border-color:var(--red); }
+.btn-sm { padding:3px 8px; font-size:11px; }
+input, select { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:4px; font-family:inherit; font-size:12px; }
+label { color:var(--text-muted); font-size:12px; margin-right:8px; }
+.flex { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.mb { margin-bottom:12px; }
+.text-muted { color:var(--text-muted); font-size:11px; }
+.modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.7); z-index:100; justify-content:center; align-items:center; }
+.modal-overlay.show { display:flex; }
+.modal { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:24px; min-width:400px; max-width:500px; }
+.modal h3 { color:var(--blue); margin-bottom:12px; }
+.modal .field { margin-bottom:10px; }
+.modal .field label { display:block; margin-bottom:2px; }
+.modal .field input { width:100%; }
+.month-nav { display:flex; align-items:center; gap:8px; }
+.month-nav span { min-width:100px; text-align:center; }
+#schedule-upload-area { border:2px dashed var(--border); border-radius:8px; padding:30px; text-align:center; cursor:pointer; margin-bottom:12px; }
+#schedule-upload-area:hover, #schedule-upload-area.dragover { border-color:var(--blue); }
+@media (max-width:768px) { .container { padding:10px; } .cards { grid-template-columns: repeat(2,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="dryrun-banner" id="dryrun-banner">⚠ DRY RUN 模式 — 不实际拨打电话</div>
+
+<div class="header">
+  <h1>📡 Webhook 监控面板</h1>
+  <div class="info" id="header-info">运行中…</div>
+</div>
+
+<div class="container">
+
+  <!-- 概览卡片 -->
+  <div class="cards">
+    <div class="card"><div class="label">今日呼叫</div><div class="value" id="stat-total">-</div></div>
+    <div class="card"><div class="label">已接通</div><div class="value green" id="stat-answered">-</div></div>
+    <div class="card"><div class="label">未接</div><div class="value yellow" id="stat-noanswer">-</div></div>
+    <div class="card"><div class="label">跳过</div><div class="value yellow" id="stat-skipped">-</div></div>
+    <div class="card"><div class="label">失败</div><div class="value red" id="stat-failed">-</div></div>
+    <div class="card"><div class="label">成功率</div><div class="value green" id="stat-rate">-</div></div>
+  </div>
+
+  <!-- 今日值班 -->
+  <div class="section">
+    <h2>📅 今日值班</h2>
+    <table id="schedule-today-table"><thead><tr><th>业务组</th><th>主值班人</th><th>主值班电话</th><th>备值班人</th><th>备值班电话</th><th>操作</th></tr></thead><tbody></tbody></table>
+    <div class="text-muted mt" id="schedule-today-empty" style="display:none">今日暂无值班安排</div>
+  </div>
+
+  <!-- 值班表管理 -->
+  <div class="section">
+    <h2>📋 值班表管理</h2>
+    <div class="flex mb">
+      <div class="month-nav">
+        <button class="btn btn-sm" onclick="navMonth(-1)">◀</button>
+        <span id="schedule-month-label"></span>
+        <button class="btn btn-sm" onclick="navMonth(1)">▶</button>
+      </div>
+      <button class="btn btn-sm" onclick="exportCSV()">📥 导出 CSV</button>
+      <button class="btn btn-sm btn-primary" onclick="showImport()">📤 导入 CSV</button>
+      <span class="text-muted" id="schedule-month-count"></span>
+    </div>
+    <div id="schedule-upload-area" style="display:none">
+      <p>拖拽 CSV 文件到此处或点击选择</p>
+      <input type="file" id="schedule-file-input" accept=".csv" style="display:none">
+    </div>
+    <div id="import-result" class="mb" style="display:none"></div>
+    <table id="schedule-table"><thead><tr><th>日期</th><th>业务组</th><th>主值班人</th><th>主值班电话</th><th>备值班人</th><th>备值班电话</th><th>操作</th></tr></thead><tbody></tbody></table>
+    <div class="text-muted" id="schedule-empty" style="display:none">该月暂无值班安排</div>
+  </div>
+
+  <!-- 编辑日志 -->
+  <div class="section">
+    <h2>📝 最近编辑日志</h2>
+    <table id="changes-table"><thead><tr><th>时间</th><th>业务组</th><th>日期</th><th>字段</th><th>旧值</th><th>新值</th><th>操作人</th></tr></thead><tbody></tbody></table>
+    <div class="text-muted" id="changes-empty" style="display:none">暂无编辑记录</div>
+  </div>
+
+  <!-- 限流状态 -->
+  <div class="section">
+    <h2>🛡 限流状态</h2>
+    <table id="cooldowns-table"><thead><tr><th>键</th><th>过期时间</th><th>剩余</th></tr></thead><tbody></tbody></table>
+    <div class="text-muted" id="cooldowns-empty" style="display:none">当前无限流</div>
+  </div>
+
+  <!-- 呼叫历史 -->
+  <div class="section">
+    <h2>📞 呼叫历史</h2>
+    <table id="calls-table"><thead><tr><th>时间</th><th>业务组</th><th>告警名称</th><th>等级</th><th>号码</th><th>状态</th><th>时长(s)</th><th>重试</th><th>跳过原因</th></tr></thead><tbody></tbody></table>
+    <div class="text-muted" id="calls-empty" style="display:none">暂无呼叫记录</div>
+  </div>
+
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="modal-overlay" id="edit-modal-overlay">
+  <div class="modal">
+    <h3>✏ 编辑排班</h3>
+    <div class="field"><label>业务组</label><input id="edit-group" readonly></div>
+    <div class="field"><label>日期</label><input id="edit-date" readonly></div>
+    <div class="field"><label>主值班人</label><input id="edit-primary-name"></div>
+    <div class="field"><label>主值班电话</label><input id="edit-primary-phone"></div>
+    <div class="field"><label>备值班人</label><input id="edit-backup-name"></div>
+    <div class="field"><label>备值班电话</label><input id="edit-backup-phone"></div>
+    <div class="flex" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn" onclick="closeEditModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 全局状态
+let scheduleMonth = new Date().toISOString().slice(0,7);
+let todayStr = new Date().toISOString().slice(0,10);
+
+// 初始化
+document.addEventListener('DOMContentLoaded', () => {
+  scheduleMonth = todayStr.slice(0,7);
+  document.getElementById('schedule-month-label').textContent = scheduleMonth;
+  refreshAll();
+  setInterval(refreshAll, 5000);
+});
+
+async function refreshAll() {
+  try {
+    const [health, stats, cooldowns, calls, todaySchedule, changes] = await Promise.all([
+      fetch('/api/v1/health').then(r=>r.json()),
+      fetch('/api/v1/stats').then(r=>r.json()),
+      fetch('/api/v1/cooldowns').then(r=>r.json()),
+      fetch('/api/v1/calls?limit=50').then(r=>r.json()),
+      fetch('/api/v1/schedule/today').then(r=>r.json()),
+      fetch('/api/v1/schedule/changes?limit=30').then(r=>r.json()),
+    ]);
+    document.getElementById('header-info').textContent =
+      `运行时长 ${health.uptime} | ${health.dry_run ? '⚠ DRY RUN' : '🟢 LIVE'}`;
+    const banner = document.getElementById('dryrun-banner');
+    if (health.dry_run) banner.classList.add('show'); else banner.classList.remove('show');
+
+    document.getElementById('stat-total').textContent = stats.total_calls || 0;
+    document.getElementById('stat-answered').textContent = stats.answered || 0;
+    document.getElementById('stat-noanswer').textContent = stats.no_answer || 0;
+    document.getElementById('stat-skipped').textContent = stats.skipped || 0;
+    document.getElementById('stat-failed').textContent = stats.failed || 0;
+    document.getElementById('stat-rate').textContent = stats.success_rate ? stats.success_rate.toFixed(1) + '%' : '-';
+
+    renderCalls(calls);
+    renderCooldowns(cooldowns);
+    renderTodaySchedule(todaySchedule);
+    renderChanges(changes);
+  } catch(e) { console.error('刷新失败', e); }
+}
+
+// 呼叫历史
+function renderCalls(records) {
+  const tbody = document.querySelector('#calls-table tbody');
+  const empty = document.getElementById('calls-empty');
+  tbody.innerHTML = '';
+  if (!records || records.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  records.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtTime(r.created_at)}</td><td>${esc(r.group_name)}</td><td>${esc(r.alert_name)}</td>
+      <td>${sevBadge(r.severity)}</td><td>${esc(r.phone)}</td>
+      <td class="status-${r.call_status}">${r.call_status}</td>
+      <td>${r.call_duration||'-'}</td><td>${r.retry_count||0}</td>
+      <td class="text-muted">${r.skipped_reason||'-'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// 限流状态
+function renderCooldowns(items) {
+  const tbody = document.querySelector('#cooldowns-table tbody');
+  const empty = document.getElementById('cooldowns-empty');
+  tbody.innerHTML = '';
+  if (!items || items.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  items.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(c.key)}</td><td>${fmtTime(c.expires_at)}</td><td>${c.remaining}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// 今日值班
+function renderTodaySchedule(entries) {
+  const tbody = document.querySelector('#schedule-today-table tbody');
+  const empty = document.getElementById('schedule-today-empty');
+  tbody.innerHTML = '';
+  if (!entries || entries.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  entries.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(e.group_name)}</td><td>${esc(e.primary_name)}</td><td>${esc(e.primary_phone)}</td>
+      <td>${esc(e.backup_name)}</td><td>${esc(e.backup_phone)}</td>
+      <td><button class="btn btn-sm" onclick="editEntry('${esc(e.group_name)}','${e.date}','${esc(e.primary_name)}','${e.primary_phone}','${esc(e.backup_name)}','${e.backup_phone}')">✏</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteEntry('${esc(e.group_name)}','${e.date}')">✕</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// 编辑日志
+function renderChanges(changes) {
+  const tbody = document.querySelector('#changes-table tbody');
+  const empty = document.getElementById('changes-empty');
+  tbody.innerHTML = '';
+  if (!changes || changes.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  changes.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtTime(c.changed_at)}</td><td>${esc(c.group_name)}</td><td>${c.date}</td>
+      <td>${esc(c.field)}</td><td>${esc(c.old_value)}</td><td>${esc(c.new_value)}</td><td>${esc(c.changed_by)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// 值班表月视图
+async function loadMonthSchedule() {
+  try {
+    const resp = await fetch(`/api/v1/schedule/export?month=${scheduleMonth}`);
+    if (!resp.ok) { document.getElementById('schedule-month-count').textContent = '加载失败'; return; }
+    const text = await resp.text();
+    const lines = text.trim().split('\n');
+    document.getElementById('schedule-month-count').textContent = lines.length > 1 ? `${lines.length-1} 条排班` : '';
+    renderMonthSchedule(lines);
+  } catch(e) { console.error(e); }
+}
+function renderMonthSchedule(lines) {
+  const tbody = document.querySelector('#schedule-table tbody');
+  const empty = document.getElementById('schedule-empty');
+  tbody.innerHTML = '';
+  if (lines.length <= 1) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  for (let i=1; i<lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    if (cols.length < 5) continue;
+    const [group, date, pname, pphone, bname, bphone] = cols;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${date}</td><td>${esc(group)}</td><td>${esc(pname)}</td><td>${esc(pphone)}</td>
+      <td>${esc(bname||'')}</td><td>${esc(bphone||'')}</td>
+      <td>${date >= todayStr ? `<button class="btn btn-sm" onclick="editEntry('${esc(group)}','${date}','${esc(pname)}','${esc(pphone)}','${esc(bname)}','${esc(bphone)}')">✏</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteEntry('${esc(group)}','${date}')">✕</button>` : '<span class="text-muted">已过去</span>'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// CSV 行解析
+function parseCSVLine(line) {
+  const result = []; let current = ''; let inQuotes = false;
+  for (let ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// 编辑弹窗
+function editEntry(group, date, pname, pphone, bname, bphone) {
+  document.getElementById('edit-group').value = group;
+  document.getElementById('edit-date').value = date;
+  document.getElementById('edit-primary-name').value = pname;
+  document.getElementById('edit-primary-phone').value = pphone;
+  document.getElementById('edit-backup-name').value = bname;
+  document.getElementById('edit-backup-phone').value = bphone;
+  document.getElementById('edit-modal-overlay').classList.add('show');
+}
+function closeEditModal() {
+  document.getElementById('edit-modal-overlay').classList.remove('show');
+}
+async function saveEdit() {
+  const body = {
+    group_name: document.getElementById('edit-group').value,
+    date: document.getElementById('edit-date').value,
+    primary_name: document.getElementById('edit-primary-name').value,
+    primary_phone: document.getElementById('edit-primary-phone').value,
+    backup_name: document.getElementById('edit-backup-name').value,
+    backup_phone: document.getElementById('edit-backup-phone').value,
+  };
+  const resp = await fetch('/api/v1/schedule/entry', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (resp.ok) { closeEditModal(); refreshAll(); loadMonthSchedule(); }
+  else { const err = await resp.json(); alert('保存失败: ' + (err.error || resp.status)); }
+}
+async function deleteEntry(group, date) {
+  if (!confirm(`确认删除 ${group} ${date} 的排班？`)) return;
+  const resp = await fetch(`/api/v1/schedule/entry?group=${encodeURIComponent(group)}&date=${date}`, { method:'DELETE' });
+  if (resp.ok) { refreshAll(); loadMonthSchedule(); }
+  else { const err = await resp.json(); alert('删除失败: ' + (err.error || resp.status)); }
+}
+
+// 导航月份
+function navMonth(dir) {
+  const [y,m] = scheduleMonth.split('-').map(Number);
+  const d = new Date(y, m-1 + dir, 1);
+  scheduleMonth = d.toISOString().slice(0,7);
+  document.getElementById('schedule-month-label').textContent = scheduleMonth;
+  loadMonthSchedule();
+}
+
+// 导出 CSV
+function exportCSV() {
+  window.open(`/api/v1/schedule/export?month=${scheduleMonth}`, '_blank');
+}
+
+// 导入
+function showImport() {
+  const area = document.getElementById('schedule-upload-area');
+  area.style.display = 'block';
+  const input = document.getElementById('schedule-file-input');
+  area.onclick = () => input.click();
+  area.ondragover = e => { e.preventDefault(); area.classList.add('dragover'); };
+  area.ondragleave = () => area.classList.remove('dragover');
+  area.ondrop = e => { e.preventDefault(); area.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); };
+  input.onchange = () => { if (input.files[0]) handleFile(input.files[0]); };
+}
+async function handleFile(file) {
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  const resp = await fetch('/api/v1/schedule/import', { method:'POST', body:form });
+  const result = await resp.json();
+  const div = document.getElementById('import-result');
+  div.style.display = 'block';
+  if (resp.ok) { div.innerHTML = `<span style="color:var(--green)">✓ 导入成功: ${result.imported}/${result.total} 条</span>`; }
+  else { div.innerHTML = `<span style="color:var(--red)">✕ 导入失败: ${result.error}</span>`; }
+  document.getElementById('schedule-upload-area').style.display = 'none';
+  refreshAll();
+  loadMonthSchedule();
+  setTimeout(() => { div.style.display = 'none'; }, 5000);
+}
+
+// 工具函数
+function fmtTime(s) { if (!s) return '-'; return s.replace('T',' ').slice(0,19); }
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function sevBadge(level) {
+  const labels = {1:'<span style="color:var(--red)">严重</span>', 2:'<span style="color:var(--yellow)">警告</span>', 3:'<span style="color:var(--text-muted)">提醒</span>'};
+  return labels[level] || level;
+}
+
+// 初始化月份
+loadMonthSchedule();
+</script>
+</body>
+</html>
