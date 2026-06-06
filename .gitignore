@@ -16,3 +16,5 @@ webhook
 .vscode/
 *.swp
 *.swo
+test_schedule.csv
+test_schedule.csv

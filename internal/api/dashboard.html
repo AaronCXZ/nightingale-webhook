@@ -159,13 +159,18 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 </div>
 
 <script>
-// 全局状态
-let scheduleMonth = new Date().toISOString().slice(0,7);
-let todayStr = new Date().toISOString().slice(0,10);
+// 全局状态（避免 toISOString 的时区偏移，手动拼 YYYY-MM）
+function fmtMonth(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function fmtDate(d) {
+  return fmtMonth(d) + '-' + String(d.getDate()).padStart(2, '0');
+}
+let scheduleMonth = fmtMonth(new Date());
+let todayStr = fmtDate(new Date());
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
-  scheduleMonth = todayStr.slice(0,7);
   document.getElementById('schedule-month-label').textContent = scheduleMonth;
   refreshAll();
   setInterval(refreshAll, 5000);
@@ -343,7 +348,7 @@ async function deleteEntry(group, date) {
 function navMonth(dir) {
   const [y,m] = scheduleMonth.split('-').map(Number);
   const d = new Date(y, m-1 + dir, 1);
-  scheduleMonth = d.toISOString().slice(0,7);
+  scheduleMonth = fmtMonth(d);
   document.getElementById('schedule-month-label').textContent = scheduleMonth;
   loadMonthSchedule();
 }
