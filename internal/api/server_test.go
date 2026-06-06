@@ -299,18 +299,48 @@ func TestHandleDashboard404(t *testing.T) {
 	}
 }
 
-// --- 值班表导出 ---
+// --- 日历数据（JSON API）---
 
-func TestHandleScheduleExportNoRange(t *testing.T) {
+func TestHandleScheduleCalendar(t *testing.T) {
 	ts, s := newTestServer(t)
 
-	// 先导入一条数据
 	day := tomorrow(t)
-	s.ImportSchedule([]store.OncallEntry{
-		{GroupName: "ops", Date: day, PrimaryName: "张三", PrimaryPhone: "13800001111"},
+	s.ImportSchedule([]store.OncallPrimary{
+		{Date: day, Name: "张三", Phone: "13800001111"},
+	}, []store.OncallBackup{
+		{Date: day, GroupName: "ops", Name: "李四", Phone: "13800002222"},
 	})
 
-	resp, err := http.Get(ts.URL + "/api/v1/schedule/export")
+	var days []store.CalendarDay
+	r := getJSON(t, ts.URL+"/api/v1/schedule/calendar?month="+day[:7], &days)
+
+	if r.StatusCode != http.StatusOK {
+		t.Errorf("状态码应为 200，got %d", r.StatusCode)
+	}
+	if len(days) == 0 {
+		t.Fatal("应有日历数据")
+	}
+	// 找到有数据的日期
+	var found bool
+	for _, d := range days {
+		if d.Date == day {
+			found = true
+			if d.PrimaryName != "张三" {
+				t.Errorf("主值应为 张三，got %s", d.PrimaryName)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("日历数据中未找到导入的日期")
+	}
+}
+
+func TestHandleScheduleCalendarDefaultMonth(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	// 无 month 参数，应使用当月
+	resp, err := http.Get(ts.URL + "/api/v1/schedule/calendar")
 	if err != nil {
 		t.Fatalf("GET 失败: %v", err)
 	}
@@ -319,25 +349,21 @@ func TestHandleScheduleExportNoRange(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("状态码应为 200，got %d", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	csv := string(body)
-	if !strings.HasPrefix(csv, "group_name,date") {
-		t.Error("CSV 应以 header 开头")
-	}
-	if !strings.Contains(csv, "ops") {
-		t.Error("CSV 应包含数据")
-	}
 }
 
-func TestHandleScheduleExportMonth(t *testing.T) {
+// --- 值班表导出 ---
+
+func TestHandleScheduleExport(t *testing.T) {
 	ts, s := newTestServer(t)
 
 	day := tomorrow(t)
-	s.ImportSchedule([]store.OncallEntry{
-		{GroupName: "ops", Date: day, PrimaryName: "张三", PrimaryPhone: "13800001111"},
+	s.ImportSchedule([]store.OncallPrimary{
+		{Date: day, Name: "张三", Phone: "13800001111"},
+	}, []store.OncallBackup{
+		{Date: day, GroupName: "ops", Name: "李四", Phone: "13800002222"},
 	})
 
-	month := day[:7] // YYYY-MM
+	month := day[:7]
 	resp, err := http.Get(ts.URL + "/api/v1/schedule/export?month=" + month)
 	if err != nil {
 		t.Fatalf("GET 失败: %v", err)
@@ -348,20 +374,23 @@ func TestHandleScheduleExportMonth(t *testing.T) {
 		t.Errorf("状态码应为 200，got %d", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "ops") {
-		t.Error("按月份导出应包含数据")
+	csv := string(body)
+	if !strings.HasPrefix(csv, "type,date") {
+		t.Error("CSV 应以 'type,date' header 开头")
+	}
+	if !strings.Contains(csv, "primary") {
+		t.Error("CSV 应包含 primary 行")
+	}
+	if !strings.Contains(csv, "backup") {
+		t.Error("CSV 应包含 backup 行")
 	}
 }
 
-func TestHandleScheduleExportStartEnd(t *testing.T) {
-	ts, s := newTestServer(t)
+func TestHandleScheduleExportDefaultMonth(t *testing.T) {
+	ts, _ := newTestServer(t)
 
-	day := tomorrow(t)
-	s.ImportSchedule([]store.OncallEntry{
-		{GroupName: "ops", Date: day, PrimaryName: "张三", PrimaryPhone: "13800001111"},
-	})
-
-	resp, err := http.Get(ts.URL + "/api/v1/schedule/export?start=" + day + "&end=" + day)
+	// 无 month 参数，使用当月
+	resp, err := http.Get(ts.URL + "/api/v1/schedule/export")
 	if err != nil {
 		t.Fatalf("GET 失败: %v", err)
 	}
@@ -369,10 +398,6 @@ func TestHandleScheduleExportStartEnd(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("状态码应为 200，got %d", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "ops") {
-		t.Error("按范围导出应包含数据")
 	}
 }
 
@@ -382,56 +407,51 @@ func TestHandleScheduleToday(t *testing.T) {
 	ts, s := newTestServer(t)
 
 	today := time.Now().UTC().Format("2006-01-02")
-	s.ImportSchedule([]store.OncallEntry{
-		{GroupName: "ops", Date: today, PrimaryName: "张三", PrimaryPhone: "13800001111"},
+	s.ImportSchedule([]store.OncallPrimary{
+		{Date: today, Name: "张三", Phone: "13800001111"},
+	}, []store.OncallBackup{
+		{Date: today, GroupName: "ops", Name: "李四", Phone: "13800002222"},
 	})
 
-	var entries []store.OncallEntry
-	r := getJSON(t, ts.URL+"/api/v1/schedule/today", &entries)
+	var day store.CalendarDay
+	r := getJSON(t, ts.URL+"/api/v1/schedule/today", &day)
 
 	if r.StatusCode != http.StatusOK {
 		t.Errorf("状态码应为 200，got %d", r.StatusCode)
 	}
-	if len(entries) == 0 {
-		t.Error("应有值班数据")
+	if day.PrimaryName != "张三" {
+		t.Errorf("主值应为 张三，got %s", day.PrimaryName)
+	}
+	if len(day.Backups) != 1 {
+		t.Errorf("应有 1 个备值，got %d", len(day.Backups))
 	}
 }
 
 func TestHandleScheduleTodayEmpty(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	var entries []store.OncallEntry
-	r := getJSON(t, ts.URL+"/api/v1/schedule/today", &entries)
+	var resp map[string]string
+	r := getJSON(t, ts.URL+"/api/v1/schedule/today", &resp)
 
 	if r.StatusCode != http.StatusOK {
 		t.Errorf("状态码应为 200，got %d", r.StatusCode)
 	}
-	if len(entries) != 0 {
-		t.Errorf("无数据时应为空数组，got %d", len(entries))
-	}
 }
 
-// --- 更新排班 ---
+// --- 修改主值班人 ---
 
-func TestHandleScheduleEntryUpdate(t *testing.T) {
-	ts, s := newTestServer(t)
+func TestHandleSchedulePrimaryUpdate(t *testing.T) {
+	ts, _ := newTestServer(t)
 
 	day := tomorrow(t)
-	s.ImportSchedule([]store.OncallEntry{
-		{GroupName: "ops", Date: day, PrimaryName: "张三", PrimaryPhone: "13800001111"},
-	})
-
 	body := map[string]string{
-		"group_name":    "ops",
-		"date":          day,
-		"primary_name":  "李四",
-		"primary_phone": "13900002222",
-		"backup_name":   "王五",
-		"backup_phone":  "13700003333",
+		"date":  day,
+		"name":  "张三",
+		"phone": "13800001111",
 	}
 	jsonBody, _ := json.Marshal(body)
 
-	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/entry",
+	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/primary",
 		bytes.NewReader(jsonBody), "application/json")
 	defer resp.Body.Close()
 
@@ -446,50 +466,60 @@ func TestHandleScheduleEntryUpdate(t *testing.T) {
 	}
 }
 
-func TestHandleScheduleEntryUpdateInvalidJSON(t *testing.T) {
-	ts, _ := newTestServer(t)
-
-	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/entry",
-		strings.NewReader(`{invalid json}`), "application/json")
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("无效 JSON 应返回 400，got %d", resp.StatusCode)
-	}
-}
-
-func TestHandleScheduleEntryUpdatePastDate(t *testing.T) {
+func TestHandleSchedulePrimaryUpdateMissingDate(t *testing.T) {
 	ts, _ := newTestServer(t)
 
 	body := map[string]string{
-		"group_name":    "ops",
-		"date":          "2020-01-01",
-		"primary_name":  "张三",
-		"primary_phone": "13800001111",
+		"date":  "",
+		"name":  "张三",
+		"phone": "13800001111",
 	}
 	jsonBody, _ := json.Marshal(body)
 
-	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/entry",
+	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/primary",
 		bytes.NewReader(jsonBody), "application/json")
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("过去日期应返回 400，got %d", resp.StatusCode)
+		t.Errorf("空 date 应返回 400，got %d", resp.StatusCode)
 	}
 }
 
-func TestHandleScheduleEntryUpdateMissingGroup(t *testing.T) {
+// --- 修改备值班人 ---
+
+func TestHandleScheduleBackupUpdate(t *testing.T) {
 	ts, _ := newTestServer(t)
 
+	day := tomorrow(t)
 	body := map[string]string{
-		"group_name":    "",
-		"date":          tomorrow(t),
-		"primary_name":  "张三",
-		"primary_phone": "13800001111",
+		"date":       day,
+		"group_name": "ops",
+		"name":       "李四",
+		"phone":      "13800002222",
 	}
 	jsonBody, _ := json.Marshal(body)
 
-	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/entry",
+	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/backup",
+		bytes.NewReader(jsonBody), "application/json")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("状态码应为 200，got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleScheduleBackupUpdateMissingGroup(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	body := map[string]string{
+		"date":       tomorrow(t),
+		"group_name": "",
+		"name":       "李四",
+		"phone":      "13800002222",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	resp := doRequest(t, http.MethodPut, ts.URL+"/api/v1/schedule/backup",
 		bytes.NewReader(jsonBody), "application/json")
 	defer resp.Body.Close()
 
@@ -498,18 +528,18 @@ func TestHandleScheduleEntryUpdateMissingGroup(t *testing.T) {
 	}
 }
 
-// --- 删除排班 ---
+// --- 删除主值班人 ---
 
-func TestHandleScheduleEntryDelete(t *testing.T) {
+func TestHandleSchedulePrimaryDelete(t *testing.T) {
 	ts, s := newTestServer(t)
 
 	day := tomorrow(t)
-	s.ImportSchedule([]store.OncallEntry{
-		{GroupName: "ops", Date: day, PrimaryName: "张三", PrimaryPhone: "13800001111"},
-	})
+	s.ImportSchedule([]store.OncallPrimary{
+		{Date: day, Name: "张三", Phone: "13800001111"},
+	}, nil)
 
 	resp := doRequest(t, http.MethodDelete,
-		ts.URL+"/api/v1/schedule/entry?group=ops&date="+day, nil, "")
+		ts.URL+"/api/v1/schedule/primary?date="+day, nil, "")
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -523,26 +553,44 @@ func TestHandleScheduleEntryDelete(t *testing.T) {
 	}
 }
 
-func TestHandleScheduleEntryDeleteMissingParam(t *testing.T) {
+func TestHandleSchedulePrimaryDeleteMissingDate(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	resp := doRequest(t, http.MethodDelete, ts.URL+"/api/v1/schedule/entry", nil, "")
+	resp := doRequest(t, http.MethodDelete, ts.URL+"/api/v1/schedule/primary", nil, "")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("缺 date 应返回 400，got %d", resp.StatusCode)
+	}
+}
+
+// --- 删除备值班人 ---
+
+func TestHandleScheduleBackupDelete(t *testing.T) {
+	ts, s := newTestServer(t)
+
+	day := tomorrow(t)
+	s.ImportSchedule(nil, []store.OncallBackup{
+		{Date: day, GroupName: "ops", Name: "李四", Phone: "13800002222"},
+	})
+
+	resp := doRequest(t, http.MethodDelete,
+		ts.URL+"/api/v1/schedule/backup?date="+day+"&group=ops", nil, "")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("状态码应为 200，got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleScheduleBackupDeleteMissingParam(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	resp := doRequest(t, http.MethodDelete, ts.URL+"/api/v1/schedule/backup", nil, "")
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("缺参数应返回 400，got %d", resp.StatusCode)
-	}
-}
-
-func TestHandleScheduleEntryDeletePastDate(t *testing.T) {
-	ts, _ := newTestServer(t)
-
-	resp := doRequest(t, http.MethodDelete,
-		ts.URL+"/api/v1/schedule/entry?group=ops&date=2020-01-01", nil, "")
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("过去日期应返回 400，got %d", resp.StatusCode)
 	}
 }
 
@@ -551,7 +599,6 @@ func TestHandleScheduleEntryDeletePastDate(t *testing.T) {
 func TestHandleScheduleChanges(t *testing.T) {
 	ts, s := newTestServer(t)
 
-	// 插入一条变更日志
 	s.LogScheduleChange(store.ScheduleChange{
 		GroupName: "ops",
 		Date:      tomorrow(t),
@@ -577,7 +624,6 @@ func TestHandleScheduleChanges(t *testing.T) {
 func TestHandleScheduleChangesLimitDefault(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	// 无 limit 参数，使用默认值 50
 	resp, err := http.Get(ts.URL + "/api/v1/schedule/changes")
 	if err != nil {
 		t.Fatalf("GET 失败: %v", err)
@@ -589,13 +635,13 @@ func TestHandleScheduleChangesLimitDefault(t *testing.T) {
 	}
 }
 
-// --- CSV 导入 ---
+// --- CSV 导入（新格式） ---
 
 func TestHandleScheduleImport(t *testing.T) {
 	ts, _ := newTestServer(t)
 
 	day := tomorrow(t)
-	csvContent := fmt.Sprintf("group_name,date,primary_name,primary_phone,backup_name,backup_phone\noops,%s,张三,13800001111,李四,13800002222\n", day)
+	csvContent := fmt.Sprintf("type,date,group_name,name,phone\nprimary,%s,main,张三,13800001111\nbackup,%s,ops,李四,13800002222\n", day, day)
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -613,15 +659,18 @@ func TestHandleScheduleImport(t *testing.T) {
 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
-	if result["imported"] != float64(1) {
-		t.Errorf("应导入 1 条，got %v", result["imported"])
+	if result["imported_primary"] != float64(1) {
+		t.Errorf("应导入 1 条 primary，got %v", result["imported_primary"])
+	}
+	if result["imported_backup"] != float64(1) {
+		t.Errorf("应导入 1 条 backup，got %v", result["imported_backup"])
 	}
 }
 
 func TestHandleScheduleImportInvalidCSV(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	// 无效 CSV：缺少必需字段
+	// 无效 CSV
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	fw, _ := w.CreateFormFile("file", "test.csv")

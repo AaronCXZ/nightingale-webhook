@@ -8,173 +8,179 @@ import (
 	"webhook/internal/store"
 )
 
-func TestParseCSV(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
-
-	csv := strings.NewReader(`group_name,date,primary_name,primary_phone,backup_name,backup_phone
-运维组,` + tomorrow + `,张三,13800001111,李四,13800002222
-web组,` + tomorrow + `,王五,13900001111,,`)
-
-	entries, err := ParseCSV(csv)
-	if err != nil {
-		t.Fatalf("ParseCSV 错误: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("应有 2 条记录，got %d", len(entries))
-	}
-
-	e1 := entries[0]
-	if e1.GroupName != "运维组" {
-		t.Errorf("group_name 应为 运维组，got %s", e1.GroupName)
-	}
-	if e1.PrimaryName != "张三" {
-		t.Errorf("PrimaryName 应为 张三，got %s", e1.PrimaryName)
-	}
-	if e1.PrimaryPhone != "13800001111" {
-		t.Errorf("PrimaryPhone 应为 13800001111，got %s", e1.PrimaryPhone)
-	}
-	if e1.BackupName != "李四" {
-		t.Errorf("BackupName 应为 李四，got %s", e1.BackupName)
-	}
-	if e1.BackupPhone != "13800002222" {
-		t.Errorf("BackupPhone 应为 13800002222，got %s", e1.BackupPhone)
-	}
-
-	// 第二条无备值班人
-	e2 := entries[1]
-	if e2.GroupName != "web组" {
-		t.Errorf("group_name 应为 web组，got %s", e2.GroupName)
-	}
-	if e2.BackupName != "" {
-		t.Errorf("BackupName 应为空，got %s", e2.BackupName)
-	}
+func tomorrow(t *testing.T) string {
+	t.Helper()
+	return time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
 }
 
-func TestParseCSVSkipHeader(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
+func TestParseCSV(t *testing.T) {
+	day := tomorrow(t)
 
-	// header 行应被跳过
-	csv := strings.NewReader(`group_name,date,primary_name,primary_phone
-test,` + tomorrow + `,张三,13800001111`)
+	csv := strings.NewReader(`type,date,group_name,name,phone
+primary,` + day + `,main,张三,13800001111
+backup,` + day + `,ops,李四,13800002222
+backup,` + day + `,web,王五,13900001111`)
 
-	entries, err := ParseCSV(csv)
+	primaries, backups, err := ParseCSV(csv)
 	if err != nil {
 		t.Fatalf("ParseCSV 错误: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("应有 1 条记录，got %d", len(entries))
+
+	if len(primaries) != 1 {
+		t.Fatalf("应有 1 条 primary，got %d", len(primaries))
+	}
+	if primaries[0].Name != "张三" {
+		t.Errorf("primary name 应为 张三，got %s", primaries[0].Name)
+	}
+	if primaries[0].Phone != "13800001111" {
+		t.Errorf("primary phone 应为 13800001111，got %s", primaries[0].Phone)
+	}
+
+	if len(backups) != 2 {
+		t.Fatalf("应有 2 条 backup，got %d", len(backups))
+	}
+	if backups[0].GroupName != "ops" {
+		t.Errorf("backup[0] group_name 应为 ops，got %s", backups[0].GroupName)
+	}
+	if backups[1].GroupName != "web" {
+		t.Errorf("backup[1] group_name 应为 web，got %s", backups[1].GroupName)
 	}
 }
 
 func TestParseCSVNoHeader(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
+	day := tomorrow(t)
+	csv := strings.NewReader(`primary,` + day + `,main,张三,13800001111`)
 
-	// 无 header 行
-	csv := strings.NewReader(`ops,` + tomorrow + `,张三,13800001111`)
-
-	entries, err := ParseCSV(csv)
+	primaries, backups, err := ParseCSV(csv)
 	if err != nil {
 		t.Fatalf("ParseCSV 错误: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("应有 1 条记录，got %d", len(entries))
+	if len(primaries) != 1 {
+		t.Fatalf("应有 1 条 primary，got %d", len(primaries))
 	}
-	if entries[0].GroupName != "ops" {
-		t.Errorf("GroupName 应为 ops，got %s", entries[0].GroupName)
+	if len(backups) != 0 {
+		t.Errorf("应有 0 条 backup，got %d", len(backups))
 	}
 }
 
 func TestParseCSVPastDate(t *testing.T) {
-	// 过去日期应拒绝
-	csv := strings.NewReader(`ops,2020-01-01,张三,13800001111`)
-	_, err := ParseCSV(csv)
+	csv := strings.NewReader(`primary,2020-01-01,main,张三,13800001111`)
+	_, _, err := ParseCSV(csv)
 	if err == nil {
 		t.Error("过去日期应返回错误")
 	}
 }
 
 func TestParseCSVInvalidPhone(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
-
-	csv := strings.NewReader(`ops,` + tomorrow + `,张三,12345`)
-	_, err := ParseCSV(csv)
+	day := tomorrow(t)
+	csv := strings.NewReader(`primary,` + day + `,main,张三,12345`)
+	_, _, err := ParseCSV(csv)
 	if err == nil {
 		t.Error("无效手机号应返回错误")
 	}
 }
 
 func TestParseCSVMissingFields(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
-
-	csv := strings.NewReader(`ops,` + tomorrow + `,张三`)
-	_, err := ParseCSV(csv)
+	day := tomorrow(t)
+	csv := strings.NewReader(`primary,` + day + `,main`)
+	_, _, err := ParseCSV(csv)
 	if err == nil {
 		t.Error("字段不足应返回错误")
 	}
 }
 
-func TestExportCSV(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
+func TestParseCSVInvalidType(t *testing.T) {
+	day := tomorrow(t)
+	csv := strings.NewReader(`invalid,` + day + `,main,张三,13800001111`)
+	_, _, err := ParseCSV(csv)
+	if err == nil {
+		t.Error("无效类型应返回错误")
+	}
+}
 
-	entries := []store.OncallEntry{
-		{GroupName: "ops", Date: tomorrow, PrimaryName: "张三", PrimaryPhone: "13800001111", BackupName: "李四", BackupPhone: "13800002222"},
+func TestParseCSVBackupNoGroup(t *testing.T) {
+	day := tomorrow(t)
+	csv := strings.NewReader(`backup,` + day + `,,张三,13800001111`)
+	_, _, err := ParseCSV(csv)
+	if err == nil {
+		t.Error("backup 类型缺少 group_name 应返回错误")
+	}
+}
+
+func TestExportCSV(t *testing.T) {
+	day := tomorrow(t)
+	days := []store.CalendarDay{
+		{
+			Date:         day,
+			PrimaryName:  "张三",
+			PrimaryPhone: "13800001111",
+			Backups: []store.OncallBackup{
+				{Date: day, GroupName: "ops", Name: "李四", Phone: "13800002222"},
+			},
+		},
 	}
 
-	data, err := ExportCSV(entries)
+	data, err := ExportCSV(days)
 	if err != nil {
 		t.Fatalf("ExportCSV 错误: %v", err)
 	}
 
 	csvStr := string(data)
-	if !strings.Contains(csvStr, "group_name,date") {
+	if !strings.Contains(csvStr, "type,date,group_name") {
 		t.Error("CSV 应包含 header")
 	}
-	if !strings.Contains(csvStr, "ops") {
-		t.Error("CSV 应包含数据行")
+	if !strings.Contains(csvStr, "primary") {
+		t.Error("CSV 应包含 primary 行")
+	}
+	if !strings.Contains(csvStr, "backup") {
+		t.Error("CSV 应包含 backup 行")
 	}
 	if !strings.Contains(csvStr, "13800001111") {
-		t.Error("CSV 应包含主值班人手机号")
+		t.Error("CSV 应包含电话号码")
 	}
 }
 
 func TestExportCSVRoundTrip(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
-
-	original := []store.OncallEntry{
-		{GroupName: "ops", Date: tomorrow, PrimaryName: "张三", PrimaryPhone: "13800001111", BackupName: "李四", BackupPhone: "13800002222"},
-		{GroupName: "web", Date: tomorrow, PrimaryName: "王五", PrimaryPhone: "13900001111"},
+	day := tomorrow(t)
+	days := []store.CalendarDay{
+		{
+			Date:         day,
+			PrimaryName:  "张三",
+			PrimaryPhone: "13800001111",
+			Backups: []store.OncallBackup{
+				{Date: day, GroupName: "ops", Name: "李四", Phone: "13800002222"},
+			},
+		},
+		{
+			Date:         time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02"),
+			PrimaryName:  "王五",
+			PrimaryPhone: "13900001111",
+		},
 	}
 
-	data, err := ExportCSV(original)
+	data, err := ExportCSV(days)
 	if err != nil {
 		t.Fatalf("ExportCSV 错误: %v", err)
 	}
 
-	parsed, err := ParseCSV(strings.NewReader(string(data)))
+	primaries, backups, err := ParseCSV(strings.NewReader(string(data)))
 	if err != nil {
-		t.Fatalf("ParseCSV 错误: %v", err)
+		t.Fatalf("ParseCSV round-trip 错误: %v", err)
 	}
 
-	if len(parsed) != len(original) {
-		t.Fatalf("round-trip 记录数不匹配: %d vs %d", len(parsed), len(original))
+	if len(primaries) != 2 {
+		t.Fatalf("round-trip primary 应为 2，got %d", len(primaries))
 	}
-
-	for i := range original {
-		if parsed[i].GroupName != original[i].GroupName {
-			t.Errorf("round-trip [%d] group_name 不匹配: %s vs %s", i, parsed[i].GroupName, original[i].GroupName)
-		}
-		if parsed[i].PrimaryPhone != original[i].PrimaryPhone {
-			t.Errorf("round-trip [%d] primary_phone 不匹配", i)
-		}
+	if len(backups) != 1 {
+		t.Errorf("round-trip backup 应为 1，got %d", len(backups))
 	}
 }
 
 func TestValidateDateNotPast(t *testing.T) {
-	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
-	if err := ValidateDateNotPast(tomorrow); err != nil {
+	day := tomorrow(t)
+	if err := ValidateDateNotPast(day); err != nil {
 		t.Errorf("未来日期不应报错: %v", err)
 	}
-
 	if err := ValidateDateNotPast("2020-01-01"); err == nil {
 		t.Error("过去日期应报错")
 	}

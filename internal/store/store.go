@@ -36,20 +36,26 @@ type Store interface {
 	// GetStats 获取今日聚合统计
 	GetStats() (*Stats, error)
 
-	// --- 值班表 ---
+	// --- 值班表（新模型：每日一主值 + 多组备值） ---
 
-	// GetOncallByDate 按日期和组名查值班表
-	GetOncallByDate(groupName, date string) (*OncallEntry, error)
-	// GetTodaySchedules 获取今日所有组的值班表
-	GetTodaySchedules() ([]OncallEntry, error)
-	// ImportSchedule 批量导入值班表（UPSERT by group_name, date）
-	ImportSchedule(entries []OncallEntry) (int, error)
-	// UpdateScheduleEntry 更新单条排班
-	UpdateScheduleEntry(groupName, date string, entry OncallEntry) error
-	// DeleteScheduleEntry 删除某天排班
-	DeleteScheduleEntry(groupName, date string) error
-	// ExportSchedule 导出日期范围值班表
-	ExportSchedule(startDate, endDate string) ([]OncallEntry, error)
+	// GetOncallPrimary 查某天主值班人
+	GetOncallPrimary(date string) (*OncallPrimary, error)
+	// GetOncallBackups 查某天所有备值班人
+	GetOncallBackups(date string) ([]OncallBackup, error)
+	// GetCalendarMonth 获取整月日历数据
+	GetCalendarMonth(month string) ([]CalendarDay, error)
+	// GetTodaySchedules 获取今日所有值班
+	GetTodaySchedules() (*CalendarDay, error)
+	// ImportSchedule 批量导入（primary/backup 混合）
+	ImportSchedule(primaries []OncallPrimary, backups []OncallBackup) (int, int, error)
+	// UpsertPrimary 设置/更新某天主值
+	UpsertPrimary(entry OncallPrimary) error
+	// UpsertBackup 设置/更新某天某组备值
+	UpsertBackup(entry OncallBackup) error
+	// DeletePrimary 删除某天主值
+	DeletePrimary(date string) error
+	// DeleteBackup 删除某天某组备值
+	DeleteBackup(date, group string) error
 	// LogScheduleChange 记录编辑日志
 	LogScheduleChange(change ScheduleChange) error
 	// GetScheduleChanges 查询编辑日志

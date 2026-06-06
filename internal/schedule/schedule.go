@@ -11,20 +11,18 @@ import (
 	"webhook/internal/store"
 )
 
-// 手机号格式校验（中国大陆手机号）
 var phonePattern = regexp.MustCompile(`^1[3-9]\d{9}$`)
-
-// 日期格式 YYYY-MM-DD
 var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
-// ParseCSV 解析值班表 CSV 文件
-// CSV 格式：group_name,date,primary_name,primary_phone,backup_name,backup_phone
-func ParseCSV(reader io.Reader) ([]store.OncallEntry, error) {
+// ParseCSV 新 CSV 格式：type,date,group_name,name,phone
+// type=primary: group_name 不起作用（可填 main 或空），name+phone 为主值
+// type=backup: group_name+name+phone 为备值
+func ParseCSV(reader io.Reader) ([]store.OncallPrimary, []store.OncallBackup, error) {
 	r := csv.NewReader(reader)
 	r.TrimLeadingSpace = true
 
-	// 自动检测是否有 header 行
-	var entries []store.OncallEntry
+	var primaries []store.OncallPrimary
+	var backups []store.OncallBackup
 	lineNum := 0
 
 	for {
@@ -33,11 +31,10 @@ func ParseCSV(reader io.Reader) ([]store.OncallEntry, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("第 %d 行 CSV 解析错误: %w", lineNum+1, err)
+			return nil, nil, fmt.Errorf("第 %d 行 CSV 解析错误: %w", lineNum+1, err)
 		}
 		lineNum++
 
-		// 跳过空行
 		if len(record) == 0 || (len(record) == 1 && strings.TrimSpace(record[0]) == "") {
 			continue
 		}
@@ -45,75 +42,51 @@ func ParseCSV(reader io.Reader) ([]store.OncallEntry, error) {
 		// 检测并跳过 header 行
 		if lineNum == 1 && len(record) >= 1 {
 			first := strings.TrimSpace(record[0])
-			if strings.EqualFold(first, "group_name") || strings.EqualFold(first, "group name") {
+			if strings.EqualFold(first, "type") {
 				continue
 			}
 		}
 
-		if len(record) < 4 {
-			return nil, fmt.Errorf("第 %d 行字段不足，至少需要 4 列 (group_name, date, primary_phone)，got %d 列", lineNum, len(record))
+		if len(record) < 5 {
+			return nil, nil, fmt.Errorf("第 %d 行字段不足，需要 5 列 (type,date,group_name,name,phone)，got %d 列", lineNum, len(record))
 		}
 
-		entry := store.OncallEntry{
-			GroupName:    strings.TrimSpace(record[0]),
-			Date:         strings.TrimSpace(record[1]),
-			PrimaryName:  strings.TrimSpace(getCol(record, 2)),
-			PrimaryPhone: strings.TrimSpace(record[3]),
-			BackupName:   strings.TrimSpace(getCol(record, 4)),
-			BackupPhone:  strings.TrimSpace(getCol(record, 5)),
+		recType := strings.TrimSpace(strings.ToLower(record[0]))
+		date := strings.TrimSpace(record[1])
+		groupName := strings.TrimSpace(record[2])
+		name := strings.TrimSpace(record[3])
+		phone := strings.TrimSpace(record[4])
+
+		today := time.Now().UTC().Format("2006-01-02")
+		if date < today {
+			return nil, nil, fmt.Errorf("第 %d 行: 不能导入过去的日期 %s（今天=%s）", lineNum, date, today)
+		}
+		if !datePattern.MatchString(date) {
+			return nil, nil, fmt.Errorf("第 %d 行: 日期格式错误 %s", lineNum, date)
+		}
+		if phone == "" {
+			return nil, nil, fmt.Errorf("第 %d 行: phone 不能为空", lineNum)
+		}
+		if !phonePattern.MatchString(phone) {
+			return nil, nil, fmt.Errorf("第 %d 行: phone 格式错误: %s", lineNum, phone)
 		}
 
-		entries = append(entries, entry)
-	}
-
-	// 校验
-	for i, e := range entries {
-		if err := validateEntry(e); err != nil {
-			return nil, fmt.Errorf("第 %d 行校验失败: %w", i+1, err)
+		switch recType {
+		case "primary":
+			primaries = append(primaries, store.OncallPrimary{Date: date, Name: name, Phone: phone})
+		case "backup":
+			if groupName == "" {
+				return nil, nil, fmt.Errorf("第 %d 行: backup 类型 group_name 不能为空", lineNum)
+			}
+			backups = append(backups, store.OncallBackup{Date: date, GroupName: groupName, Name: name, Phone: phone})
+		default:
+			return nil, nil, fmt.Errorf("第 %d 行: 无效类型 %q，应为 primary 或 backup", lineNum, recType)
 		}
 	}
-
-	return entries, nil
+	return primaries, backups, nil
 }
 
-func getCol(record []string, idx int) string {
-	if idx < len(record) {
-		return record[idx]
-	}
-	return ""
-}
-
-// validateEntry 校验单条值班表
-func validateEntry(e store.OncallEntry) error {
-	if e.GroupName == "" {
-		return fmt.Errorf("group_name 不能为空")
-	}
-	if e.Date == "" {
-		return fmt.Errorf("date 不能为空")
-	}
-	if !datePattern.MatchString(e.Date) {
-		return fmt.Errorf("日期格式错误，应为 YYYY-MM-DD: %s", e.Date)
-	}
-	if e.PrimaryPhone == "" {
-		return fmt.Errorf("primary_phone 不能为空")
-	}
-	if !phonePattern.MatchString(e.PrimaryPhone) {
-		return fmt.Errorf("primary_phone 格式错误: %s", e.PrimaryPhone)
-	}
-	if e.BackupPhone != "" && !phonePattern.MatchString(e.BackupPhone) {
-		return fmt.Errorf("backup_phone 格式错误: %s", e.BackupPhone)
-	}
-
-	// 检查日期不能是过去日期
-	today := time.Now().UTC().Format("2006-01-02")
-	if e.Date < today {
-		return fmt.Errorf("不能导入过去的日期 %s（今天=%s）", e.Date, today)
-	}
-
-	return nil
-}
-
-// ValidateDateNotPast 检查日期是否不是过去日期（编辑/删除时使用）
+// ValidateDateNotPast 检查日期是否不是过去日期
 func ValidateDateNotPast(date string) error {
 	today := time.Now().UTC().Format("2006-01-02")
 	if date < today {
@@ -122,26 +95,25 @@ func ValidateDateNotPast(date string) error {
 	return nil
 }
 
-// ExportCSV 将值班表序列化为 CSV 格式
-func ExportCSV(entries []store.OncallEntry) ([]byte, error) {
+// ExportCSV 导出新 CSV 格式
+func ExportCSV(days []store.CalendarDay) ([]byte, error) {
 	var buf strings.Builder
 	w := csv.NewWriter(&buf)
 
-	// 写 header
-	if err := w.Write([]string{"group_name", "date", "primary_name", "primary_phone", "backup_name", "backup_phone"}); err != nil {
+	if err := w.Write([]string{"type", "date", "group_name", "name", "phone"}); err != nil {
 		return nil, err
 	}
 
-	for _, e := range entries {
-		if err := w.Write([]string{
-			e.GroupName,
-			e.Date,
-			e.PrimaryName,
-			e.PrimaryPhone,
-			e.BackupName,
-			e.BackupPhone,
-		}); err != nil {
-			return nil, err
+	for _, d := range days {
+		if d.PrimaryName != "" {
+			if err := w.Write([]string{"primary", d.Date, "main", d.PrimaryName, d.PrimaryPhone}); err != nil {
+				return nil, err
+			}
+		}
+		for _, b := range d.Backups {
+			if err := w.Write([]string{"backup", b.Date, b.GroupName, b.Name, b.Phone}); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -149,6 +121,5 @@ func ExportCSV(entries []store.OncallEntry) ([]byte, error) {
 	if err := w.Error(); err != nil {
 		return nil, err
 	}
-
 	return []byte(buf.String()), nil
 }

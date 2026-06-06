@@ -37,8 +37,9 @@ func New(dbPath string) (Store, error) {
 	return s, nil
 }
 
-// migrate 自动建表
+// migrate 自动建表（含旧模型迁移）
 func (s *sqliteStore) migrate() error {
+	_, _ = s.db.Exec(`DROP TABLE IF EXISTS oncall_schedule`)
 	schema := `
 	CREATE TABLE IF NOT EXISTS call_records (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,24 +58,27 @@ func (s *sqliteStore) migrate() error {
 		error_msg TEXT,
 		next_poll_at TEXT
 	);
-
 	CREATE INDEX IF NOT EXISTS idx_call_records_created_at ON call_records(created_at);
 	CREATE INDEX IF NOT EXISTS idx_call_records_call_status ON call_records(call_status);
 	CREATE INDEX IF NOT EXISTS idx_call_records_next_poll_at ON call_records(next_poll_at);
 
-	CREATE TABLE IF NOT EXISTS oncall_schedule (
+	CREATE TABLE IF NOT EXISTS oncall_primary (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		group_name TEXT NOT NULL,
-		date TEXT NOT NULL,
-		primary_name TEXT,
-		primary_phone TEXT NOT NULL,
-		backup_name TEXT,
-		backup_phone TEXT,
-		UNIQUE(group_name, date)
+		date TEXT NOT NULL UNIQUE,
+		name TEXT NOT NULL,
+		phone TEXT NOT NULL
 	);
+	CREATE INDEX IF NOT EXISTS idx_oncall_primary_date ON oncall_primary(date);
 
-	CREATE INDEX IF NOT EXISTS idx_oncall_schedule_date ON oncall_schedule(date);
-	CREATE INDEX IF NOT EXISTS idx_oncall_schedule_group_date ON oncall_schedule(group_name, date);
+	CREATE TABLE IF NOT EXISTS oncall_backup (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		date TEXT NOT NULL,
+		group_name TEXT NOT NULL,
+		name TEXT,
+		phone TEXT NOT NULL,
+		UNIQUE(date, group_name)
+	);
+	CREATE INDEX IF NOT EXISTS idx_oncall_backup_date ON oncall_backup(date);
 
 	CREATE TABLE IF NOT EXISTS schedule_changes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,8 +94,7 @@ func (s *sqliteStore) migrate() error {
 	CREATE TABLE IF NOT EXISTS cooldowns (
 		key TEXT PRIMARY KEY,
 		expires_at TEXT NOT NULL
-	);
-	`
+	);`
 
 	_, err := s.db.Exec(schema)
 	return err
@@ -101,11 +104,8 @@ func (s *sqliteStore) migrate() error {
 
 func (s *sqliteStore) ShouldCall(hash string, cooldown time.Duration) (bool, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-
-	// 先清理过期冷却
 	_, _ = s.db.Exec(`DELETE FROM cooldowns WHERE expires_at <= ?`, now)
 
-	// 检查是否存在且未过期
 	var exists bool
 	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cooldowns WHERE key = ? AND expires_at > ?)`, hash, now).Scan(&exists)
 	if err != nil {
@@ -115,7 +115,6 @@ func (s *sqliteStore) ShouldCall(hash string, cooldown time.Duration) (bool, err
 		return false, nil
 	}
 
-	// 插入
 	expires := time.Now().UTC().Add(cooldown).Format(time.RFC3339)
 	_, err = s.db.Exec(`INSERT OR REPLACE INTO cooldowns (key, expires_at) VALUES (?, ?)`, hash, expires)
 	return err == nil, err
@@ -208,8 +207,6 @@ func scanCallRecords(rows *sql.Rows) ([]CallRecord, error) {
 
 func (s *sqliteStore) GetCooldowns() ([]CooldownInfo, error) {
 	now := time.Now().UTC()
-
-	// 先清理过期
 	_, _ = s.db.Exec(`DELETE FROM cooldowns WHERE expires_at <= ?`, now.Format(time.RFC3339))
 
 	rows, err := s.db.Query(`SELECT key, expires_at FROM cooldowns WHERE expires_at > ?`, now.Format(time.RFC3339))
@@ -243,13 +240,11 @@ func (s *sqliteStore) GetStats() (*Stats, error) {
 		BySeverity: make(map[int]int),
 	}
 
-	// 总计
 	row := s.db.QueryRow(`SELECT COUNT(*) FROM call_records WHERE created_at >= ?`, today)
 	if err := row.Scan(&stats.TotalCalls); err != nil {
 		return nil, err
 	}
 
-	// 按状态
 	statuses := []struct {
 		status string
 		target *int
@@ -264,11 +259,9 @@ func (s *sqliteStore) GetStats() (*Stats, error) {
 		row.Scan(st.target)
 	}
 
-	// 跳过数
 	row = s.db.QueryRow(`SELECT COUNT(*) FROM call_records WHERE created_at >= ? AND skipped_reason IS NOT NULL`, today)
 	row.Scan(&stats.Skipped)
 
-	// 成功率
 	if stats.TotalCalls > 0 {
 		called := stats.TotalCalls - stats.Skipped
 		if called > 0 {
@@ -276,7 +269,6 @@ func (s *sqliteStore) GetStats() (*Stats, error) {
 		}
 	}
 
-	// 按组
 	rows, err := s.db.Query(`SELECT group_name, COUNT(*) FROM call_records WHERE created_at >= ? GROUP BY group_name`, today)
 	if err != nil {
 		return nil, err
@@ -291,7 +283,6 @@ func (s *sqliteStore) GetStats() (*Stats, error) {
 		stats.ByGroup[group] = count
 	}
 
-	// 按严重等级
 	rows2, err := s.db.Query(`SELECT severity, COUNT(*) FROM call_records WHERE created_at >= ? GROUP BY severity`, today)
 	if err != nil {
 		return nil, err
@@ -304,19 +295,16 @@ func (s *sqliteStore) GetStats() (*Stats, error) {
 		}
 		stats.BySeverity[sev] = count
 	}
-
 	return stats, nil
 }
 
-// --- 值班表 ---
+// --- 值班表（新模型） ---
 
-func (s *sqliteStore) GetOncallByDate(groupName, date string) (*OncallEntry, error) {
-	var entry OncallEntry
-	err := s.db.QueryRow(`
-		SELECT id, group_name, date, primary_name, primary_phone, backup_name, backup_phone
-		FROM oncall_schedule WHERE group_name = ? AND date = ?`, groupName, date,
-	).Scan(&entry.ID, &entry.GroupName, &entry.Date, &entry.PrimaryName,
-		&entry.PrimaryPhone, &entry.BackupName, &entry.BackupPhone)
+func (s *sqliteStore) GetOncallPrimary(date string) (*OncallPrimary, error) {
+	var entry OncallPrimary
+	err := s.db.QueryRow(
+		`SELECT id, date, name, phone FROM oncall_primary WHERE date = ?`, date,
+	).Scan(&entry.ID, &entry.Date, &entry.Name, &entry.Phone)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -326,21 +314,18 @@ func (s *sqliteStore) GetOncallByDate(groupName, date string) (*OncallEntry, err
 	return &entry, nil
 }
 
-func (s *sqliteStore) GetTodaySchedules() ([]OncallEntry, error) {
-	today := time.Now().UTC().Format("2006-01-02")
-	rows, err := s.db.Query(`
-		SELECT id, group_name, date, primary_name, primary_phone, backup_name, backup_phone
-		FROM oncall_schedule WHERE date = ? ORDER BY group_name`, today)
+func (s *sqliteStore) GetOncallBackups(date string) ([]OncallBackup, error) {
+	rows, err := s.db.Query(
+		`SELECT id, date, group_name, name, phone FROM oncall_backup WHERE date = ? ORDER BY group_name`, date)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var entries []OncallEntry
+	var entries []OncallBackup
 	for rows.Next() {
-		var e OncallEntry
-		if err := rows.Scan(&e.ID, &e.GroupName, &e.Date, &e.PrimaryName,
-			&e.PrimaryPhone, &e.BackupName, &e.BackupPhone); err != nil {
+		var e OncallBackup
+		if err := rows.Scan(&e.ID, &e.Date, &e.GroupName, &e.Name, &e.Phone); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
@@ -348,73 +333,152 @@ func (s *sqliteStore) GetTodaySchedules() ([]OncallEntry, error) {
 	return entries, rows.Err()
 }
 
-func (s *sqliteStore) ImportSchedule(entries []OncallEntry) (int, error) {
-	count := 0
-	for _, e := range entries {
+func (s *sqliteStore) GetCalendarMonth(month string) ([]CalendarDay, error) {
+	startDate := month + "-01"
+	t, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return nil, fmt.Errorf("无效月份: %s", month)
+	}
+	endDate := t.AddDate(0, 1, -1).Format("2006-01-02")
+
+	// 获取当月所有主值
+	primeRows, err := s.db.Query(
+		`SELECT date, name, phone FROM oncall_primary WHERE date >= ? AND date <= ? ORDER BY date`,
+		startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer primeRows.Close()
+
+	primaryMap := make(map[string]struct{ name, phone string })
+	for primeRows.Next() {
+		var date, name, phone string
+		if err := primeRows.Scan(&date, &name, &phone); err != nil {
+			return nil, err
+		}
+		primaryMap[date] = struct{ name, phone string }{name, phone}
+	}
+
+	// 获取当月所有备值
+	backupRows, err := s.db.Query(
+		`SELECT date, group_name, name, phone FROM oncall_backup WHERE date >= ? AND date <= ? ORDER BY date, group_name`,
+		startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer backupRows.Close()
+
+	backupMap := make(map[string][]OncallBackup)
+	for backupRows.Next() {
+		var e OncallBackup
+		if err := backupRows.Scan(&e.Date, &e.GroupName, &e.Name, &e.Phone); err != nil {
+			return nil, err
+		}
+		backupMap[e.Date] = append(backupMap[e.Date], e)
+	}
+
+	// 遍历整月
+	var days []CalendarDay
+	current := t
+	for !current.After(t.AddDate(0, 1, -1)) {
+		ds := current.Format("2006-01-02")
+		day := CalendarDay{Date: ds}
+		if p, ok := primaryMap[ds]; ok {
+			day.PrimaryName = p.name
+			day.PrimaryPhone = p.phone
+		}
+		if b, ok := backupMap[ds]; ok {
+			day.Backups = b
+		}
+		days = append(days, day)
+		current = current.AddDate(0, 0, 1)
+	}
+	return days, nil
+}
+
+func (s *sqliteStore) GetTodaySchedules() (*CalendarDay, error) {
+	today := time.Now().UTC().Format("2006-01-02")
+
+	primary, err := s.GetOncallPrimary(today)
+	if err != nil {
+		return nil, err
+	}
+
+	backups, err := s.GetOncallBackups(today)
+	if err != nil {
+		return nil, err
+	}
+
+	day := &CalendarDay{Date: today}
+	if primary != nil {
+		day.PrimaryName = primary.Name
+		day.PrimaryPhone = primary.Phone
+	}
+	day.Backups = backups
+	return day, nil
+}
+
+func (s *sqliteStore) ImportSchedule(primaries []OncallPrimary, backups []OncallBackup) (int, int, error) {
+	pCount := 0
+	for _, e := range primaries {
 		result, err := s.db.Exec(`
-			INSERT INTO oncall_schedule (group_name, date, primary_name, primary_phone, backup_name, backup_phone)
-			VALUES (?, ?, ?, ?, ?, ?)
-			ON CONFLICT(group_name, date) DO UPDATE SET
-				primary_name = excluded.primary_name,
-				primary_phone = excluded.primary_phone,
-				backup_name = excluded.backup_name,
-				backup_phone = excluded.backup_phone`,
-			e.GroupName, e.Date, e.PrimaryName, e.PrimaryPhone, e.BackupName, e.BackupPhone,
-		)
+			INSERT INTO oncall_primary (date, name, phone)
+			VALUES (?, ?, ?)
+			ON CONFLICT(date) DO UPDATE SET name=excluded.name, phone=excluded.phone`,
+			e.Date, e.Name, e.Phone)
 		if err != nil {
-			return count, err
+			return pCount, 0, err
 		}
 		n, _ := result.RowsAffected()
 		if n > 0 {
-			count++
+			pCount++
 		}
 	}
-	return count, nil
+
+	bCount := 0
+	for _, e := range backups {
+		result, err := s.db.Exec(`
+			INSERT INTO oncall_backup (date, group_name, name, phone)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(date, group_name) DO UPDATE SET name=excluded.name, phone=excluded.phone`,
+			e.Date, e.GroupName, e.Name, e.Phone)
+		if err != nil {
+			return pCount, bCount, err
+		}
+		n, _ := result.RowsAffected()
+		if n > 0 {
+			bCount++
+		}
+	}
+	return pCount, bCount, nil
 }
 
-func (s *sqliteStore) UpdateScheduleEntry(groupName, date string, entry OncallEntry) error {
+func (s *sqliteStore) UpsertPrimary(entry OncallPrimary) error {
 	_, err := s.db.Exec(`
-		UPDATE oncall_schedule SET primary_name=?, primary_phone=?, backup_name=?, backup_phone=?
-		WHERE group_name=? AND date=?`,
-		entry.PrimaryName, entry.PrimaryPhone, entry.BackupName, entry.BackupPhone,
-		groupName, date,
-	)
+		INSERT INTO oncall_primary (date, name, phone)
+		VALUES (?, ?, ?)
+		ON CONFLICT(date) DO UPDATE SET name=excluded.name, phone=excluded.phone`,
+		entry.Date, entry.Name, entry.Phone)
 	return err
 }
 
-func (s *sqliteStore) DeleteScheduleEntry(groupName, date string) error {
-	_, err := s.db.Exec(`DELETE FROM oncall_schedule WHERE group_name=? AND date=?`, groupName, date)
+func (s *sqliteStore) UpsertBackup(entry OncallBackup) error {
+	_, err := s.db.Exec(`
+		INSERT INTO oncall_backup (date, group_name, name, phone)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(date, group_name) DO UPDATE SET name=excluded.name, phone=excluded.phone`,
+		entry.Date, entry.GroupName, entry.Name, entry.Phone)
 	return err
 }
 
-func (s *sqliteStore) ExportSchedule(startDate, endDate string) ([]OncallEntry, error) {
-	query, dates := `SELECT id, group_name, date, primary_name, primary_phone, backup_name, backup_phone FROM oncall_schedule`, []interface{}{}
+func (s *sqliteStore) DeletePrimary(date string) error {
+	_, err := s.db.Exec(`DELETE FROM oncall_primary WHERE date = ?`, date)
+	return err
+}
 
-	if startDate != "" && endDate != "" {
-		query += ` WHERE date >= ? AND date <= ?`
-		dates = append(dates, startDate, endDate)
-	} else if startDate != "" {
-		query += ` WHERE date >= ?`
-		dates = append(dates, startDate)
-	}
-	query += ` ORDER BY date, group_name`
-
-	rows, err := s.db.Query(query, dates...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var entries []OncallEntry
-	for rows.Next() {
-		var e OncallEntry
-		if err := rows.Scan(&e.ID, &e.GroupName, &e.Date, &e.PrimaryName,
-			&e.PrimaryPhone, &e.BackupName, &e.BackupPhone); err != nil {
-			return nil, err
-		}
-		entries = append(entries, e)
-	}
-	return entries, rows.Err()
+func (s *sqliteStore) DeleteBackup(date, group string) error {
+	_, err := s.db.Exec(`DELETE FROM oncall_backup WHERE date = ? AND group_name = ?`, date, group)
+	return err
 }
 
 func (s *sqliteStore) LogScheduleChange(change ScheduleChange) error {

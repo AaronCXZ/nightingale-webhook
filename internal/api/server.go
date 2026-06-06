@@ -48,8 +48,11 @@ func NewServer(cfg *config.Config, s store.Store, wh *webhook.Handler) *Server {
 	// 值班表 API
 	mux.HandleFunc("POST /api/v1/schedule/import", svr.handleScheduleImport)
 	mux.HandleFunc("GET /api/v1/schedule/today", svr.handleScheduleToday)
-	mux.HandleFunc("PUT /api/v1/schedule/entry", svr.handleScheduleEntryUpdate)
-	mux.HandleFunc("DELETE /api/v1/schedule/entry", svr.handleScheduleEntryDelete)
+	mux.HandleFunc("PUT /api/v1/schedule/primary", svr.handleSchedulePrimaryUpdate)
+	mux.HandleFunc("PUT /api/v1/schedule/backup", svr.handleScheduleBackupUpdate)
+	mux.HandleFunc("DELETE /api/v1/schedule/primary", svr.handleSchedulePrimaryDelete)
+	mux.HandleFunc("DELETE /api/v1/schedule/backup", svr.handleScheduleBackupDelete)
+	mux.HandleFunc("GET /api/v1/schedule/calendar", svr.handleScheduleCalendar)
 	mux.HandleFunc("GET /api/v1/schedule/export", svr.handleScheduleExport)
 	mux.HandleFunc("GET /api/v1/schedule/changes", svr.handleScheduleChanges)
 
@@ -150,10 +153,9 @@ func (s *Server) handleCooldowns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cooldowns)
 }
 
-// --- 值班表导入 ---
+// --- 值班表导入（新 CSV 格式：type,date,group_name,name,phone） ---
 
 func (s *Server) handleScheduleImport(w http.ResponseWriter, r *http.Request) {
-	// 限制上传大小 10MB
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
@@ -168,167 +170,185 @@ func (s *Server) handleScheduleImport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	entries, err := schedule.ParseCSV(file)
+	primaries, backups, err := schedule.ParseCSV(file)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	n, err := s.store.ImportSchedule(entries)
+	pCount, bCount, err := s.store.ImportSchedule(primaries, backups)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"imported": n,
-		"total":    len(entries),
+		"imported_primary": pCount,
+		"imported_backup":  bCount,
+		"total":            pCount + bCount,
 	})
 }
 
 // --- 今日值班 ---
 
 func (s *Server) handleScheduleToday(w http.ResponseWriter, r *http.Request) {
-	entries, err := s.store.GetTodaySchedules()
+	day, err := s.store.GetTodaySchedules()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	if entries == nil {
-		entries = []store.OncallEntry{}
+	if day == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"message": "今日无值班安排"})
+		return
 	}
-	writeJSON(w, http.StatusOK, entries)
+	writeJSON(w, http.StatusOK, day)
 }
 
-// --- 编辑值班表 ---
+// --- 修改主值班人 ---
 
-type scheduleEntryRequest struct {
-	GroupName    string `json:"group_name"`
-	Date         string `json:"date"`
-	PrimaryName  string `json:"primary_name"`
-	PrimaryPhone string `json:"primary_phone"`
-	BackupName   string `json:"backup_name"`
-	BackupPhone  string `json:"backup_phone"`
+type schedulePrimaryRequest struct {
+	Date  string `json:"date"`
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
 }
 
-func (s *Server) handleScheduleEntryUpdate(w http.ResponseWriter, r *http.Request) {
-	var req scheduleEntryRequest
+func (s *Server) handleSchedulePrimaryUpdate(w http.ResponseWriter, r *http.Request) {
+	var req schedulePrimaryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("解析请求体失败: %v", err)})
 		return
 	}
-
-	if req.GroupName == "" || req.Date == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group_name 和 date 不能为空"})
+	if req.Date == "" || req.Phone == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date 和 phone 不能为空"})
 		return
 	}
-
 	if err := schedule.ValidateDateNotPast(req.Date); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-
-	// 获取旧值用于日志
-	oldEntry, _ := s.store.GetOncallByDate(req.GroupName, req.Date)
-
-	entry := store.OncallEntry{
-		GroupName:    req.GroupName,
-		Date:         req.Date,
-		PrimaryName:  req.PrimaryName,
-		PrimaryPhone: req.PrimaryPhone,
-		BackupName:   req.BackupName,
-		BackupPhone:  req.BackupPhone,
-	}
-
-	if err := s.store.UpdateScheduleEntry(req.GroupName, req.Date, entry); err != nil {
+	if err := s.store.UpsertPrimary(store.OncallPrimary{Date: req.Date, Name: req.Name, Phone: req.Phone}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	// 记录编辑日志
-	if oldEntry != nil {
-		logChanges(oldEntry, &entry, s.store)
-	}
-
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func logChanges(old *store.OncallEntry, new *store.OncallEntry, s store.Store) {
-	change := func(field, oldVal, newVal string) {
-		if oldVal != newVal {
-			s.LogScheduleChange(store.ScheduleChange{
-				GroupName: old.GroupName,
-				Date:      old.Date,
-				Field:     field,
-				OldValue:  oldVal,
-				NewValue:  newVal,
-			})
-		}
-	}
-	change("primary_name", old.PrimaryName, new.PrimaryName)
-	change("primary_phone", old.PrimaryPhone, new.PrimaryPhone)
-	change("backup_name", old.BackupName, new.BackupName)
-	change("backup_phone", old.BackupPhone, new.BackupPhone)
+// --- 修改备值班人 ---
+
+type scheduleBackupRequest struct {
+	Date      string `json:"date"`
+	GroupName string `json:"group_name"`
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
 }
 
-func (s *Server) handleScheduleEntryDelete(w http.ResponseWriter, r *http.Request) {
-	group := r.URL.Query().Get("group")
-	date := r.URL.Query().Get("date")
-
-	if group == "" || date == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group 和 date 参数不能为空"})
+func (s *Server) handleScheduleBackupUpdate(w http.ResponseWriter, r *http.Request) {
+	var req scheduleBackupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("解析请求体失败: %v", err)})
 		return
 	}
+	if req.Date == "" || req.GroupName == "" || req.Phone == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date, group_name, phone 不能为空"})
+		return
+	}
+	if err := schedule.ValidateDateNotPast(req.Date); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := s.store.UpsertBackup(store.OncallBackup{Date: req.Date, GroupName: req.GroupName, Name: req.Name, Phone: req.Phone}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
 
+// --- 删除主值班人 ---
+
+func (s *Server) handleSchedulePrimaryDelete(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date 参数不能为空"})
+		return
+	}
 	if err := schedule.ValidateDateNotPast(date); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-
-	if err := s.store.DeleteScheduleEntry(group, date); err != nil {
+	if err := s.store.DeletePrimary(date); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	s.store.LogScheduleChange(store.ScheduleChange{
-		GroupName: group,
-		Date:      date,
-		Field:     "deleted",
-		OldValue:  "entry",
-		NewValue:  "",
-	})
-
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// --- 导出值班表 ---
+// --- 删除备值班人 ---
+
+func (s *Server) handleScheduleBackupDelete(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	group := r.URL.Query().Get("group")
+	if date == "" || group == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date 和 group 参数不能为空"})
+		return
+	}
+	if err := schedule.ValidateDateNotPast(date); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := s.store.DeleteBackup(date, group); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// --- 日历数据（JSON，供前端渲染） ---
+
+func (s *Server) handleScheduleCalendar(w http.ResponseWriter, r *http.Request) {
+	month := r.URL.Query().Get("month")
+	if month == "" {
+		month = time.Now().UTC().Format("2006-01")
+	}
+
+	days, err := s.store.GetCalendarMonth(month)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if days == nil {
+		days = []store.CalendarDay{}
+	}
+	writeJSON(w, http.StatusOK, days)
+}
+
+// --- 导出值班表 CSV（新格式） ---
 
 func (s *Server) handleScheduleExport(w http.ResponseWriter, r *http.Request) {
 	month := r.URL.Query().Get("month")
 	start := r.URL.Query().Get("start")
 	end := r.URL.Query().Get("end")
 
-	var startDate, endDate string
+	var monthVal string
 	if month != "" {
-		// month=2026-06 格式
-		startDate = month + "-01"
-		// 计算月末
-		t, err := time.Parse("2006-01-02", startDate)
+		monthVal = month
+	} else if start != "" && end != "" {
+		t, err := time.Parse("2006-01-02", start)
 		if err == nil {
-			endDate = t.AddDate(0, 1, -1).Format("2006-01-02")
+			// 用起始日期所在月
+			monthVal = t.Format("2006-01")
 		}
-	} else {
-		startDate = start
-		endDate = end
+	}
+	if monthVal == "" {
+		monthVal = time.Now().UTC().Format("2006-01")
 	}
 
-	entries, err := s.store.ExportSchedule(startDate, endDate)
+	days, err := s.store.GetCalendarMonth(monthVal)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	data, err := schedule.ExportCSV(entries)
+	data, err := schedule.ExportCSV(days)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

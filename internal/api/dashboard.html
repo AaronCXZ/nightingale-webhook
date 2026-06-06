@@ -17,60 +17,139 @@
   --blue: #58a6ff;
   --purple: #a371f7;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size:13px; line-height:1.5; }
-.header { background:var(--bg-card); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; }
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Menlo','Monaco','Courier New',monospace; font-size:13px; line-height:1.5; }
+.header { background:var(--bg-card); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:50; }
 .header h1 { font-size:16px; color:var(--green); }
 .header .info { color:var(--text-muted); font-size:12px; }
-.dryrun-banner { background:var(--yellow); color:#000; text-align:center; padding:4px; font-weight:bold; font-size:12px; display:none; }
+.dryrun-banner { background:var(--yellow); color:#000; text-align:center; padding:4px; font-weight:bold; font-size:12px; display:none; animation:slideDown .3s ease-out; }
 .dryrun-banner.show { display:block; }
 .container { max-width:1400px; margin:0 auto; padding:20px; }
-.cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
-.card { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:16px; }
+
+/* ===== Toast 通知系统 ===== */
+.toast-container { position:fixed; top:16px; right:16px; z-index:200; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.toast { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:12px 20px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,0.4); pointer-events:auto; display:flex; align-items:center; gap:10px; animation:toastIn .3s ease-out; max-width:380px; }
+.toast-success { border-color:var(--green); }
+.toast-success .toast-icon { color:var(--green); }
+.toast-error { border-color:var(--red); }
+.toast-error .toast-icon { color:var(--red); }
+.toast-info { border-color:var(--blue); }
+.toast-info .toast-icon { color:var(--blue); }
+.toast-warning { border-color:var(--yellow); }
+.toast-warning .toast-icon { color:var(--yellow); }
+.toast-leave { animation:toastOut .25s ease-in forwards; }
+@keyframes toastIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+@keyframes toastOut { from { transform:translateX(0); opacity:1; } to { transform:translateX(100%); opacity:0; } }
+
+/* ===== 骨架屏 ===== */
+.skeleton { background:linear-gradient(90deg, var(--border) 25%, rgba(255,255,255,0.05) 50%, var(--border) 75%); background-size:200% 100%; animation:skeletonPulse 1.5s ease-in-out infinite; border-radius:4px; }
+.skeleton-card { height:60px; margin-bottom:12px; }
+.skeleton-row { height:16px; margin-bottom:8px; width:60%; }
+.skeleton-row:last-child { width:40%; }
+@keyframes skeletonPulse { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ===== 卡片 ===== */
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+.card { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px; transition:border-color .2s, box-shadow .2s, transform .15s; }
+.card:hover { border-color:var(--blue); box-shadow:0 0 0 1px rgba(88,166,255,0.15), 0 4px 12px rgba(0,0,0,0.2); transform:translateY(-1px); }
 .card .label { color:var(--text-muted); font-size:11px; text-transform:uppercase; margin-bottom:4px; }
-.card .value { font-size:24px; font-weight:bold; }
+.card .value { font-size:24px; font-weight:bold; transition:color .3s; }
 .card .value.green { color:var(--green); }
 .card .value.red { color:var(--red); }
 .card .value.yellow { color:var(--yellow); }
-.section { background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:16px; margin-bottom:16px; }
+/* 数值变化闪光 */
+.value-flash { animation:valueFlash .8s ease-out; }
+@keyframes valueFlash { 0%{filter:brightness(2);} 100%{filter:brightness(1);} }
+
+.section { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px; transition:border-color .2s; }
+.section:hover { border-color:rgba(88,166,255,0.3); }
 .section h2 { font-size:14px; color:var(--blue); margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+
 table { width:100%; border-collapse:collapse; }
-th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); font-size:12px; }
-th { color:var(--text-muted); font-weight:normal; text-transform:uppercase; font-size:11px; }
+th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); font-size:12px; }
+th { color:var(--text-muted); font-weight:normal; text-transform:uppercase; font-size:11px; letter-spacing:0.5px; }
+tbody tr { transition:background .15s; }
+tbody tr:hover { background:rgba(88,166,255,0.06); }
 .status-pending { color:var(--text-muted); }
 .status-initiated { color:var(--yellow); }
 .status-answered { color:var(--green); }
 .status-no_answer { color:var(--yellow); }
 .status-busy { color:var(--red); }
 .status-failed { color:var(--red); }
-.btn { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:12px; }
-.btn:hover { background:var(--border); }
-.btn-primary { background:var(--green); color:#000; border-color:var(--green); }
-.btn-primary:hover { opacity:0.9; }
+
+.btn { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; cursor:pointer; font-family:inherit; font-size:12px; transition:all .15s; }
+.btn:hover { background:var(--border); transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+.btn:active { transform:scale(0.97); }
+.btn-primary { background:var(--green); color:#000; border-color:var(--green); font-weight:bold; }
+.btn-primary:hover { background:#4cd964; opacity:1; }
 .btn-danger { background:var(--red); color:#fff; border-color:var(--red); }
-.btn-sm { padding:3px 8px; font-size:11px; }
-input, select { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:4px; font-family:inherit; font-size:12px; }
+.btn-danger:hover { background:#ff6b5e; }
+.btn-sm { padding:4px 10px; font-size:11px; }
+
+input, select { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-family:inherit; font-size:12px; transition:border-color .2s; }
+input:focus, select:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 2px rgba(88,166,255,0.2); }
 label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 .flex { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .mb { margin-bottom:12px; }
 .text-muted { color:var(--text-muted); font-size:11px; }
-.modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.7); z-index:100; justify-content:center; align-items:center; }
-.modal-overlay.show { display:flex; }
-.modal { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:24px; min-width:400px; max-width:500px; }
-.modal h3 { color:var(--blue); margin-bottom:12px; }
+
+/* ===== 动效弹窗 ===== */
+.modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0); z-index:100; justify-content:center; align-items:center; transition:background .2s; }
+.modal-overlay.show { display:flex; background:rgba(0,0,0,0.7); }
+.modal-overlay.show .modal { animation:modalIn .2s ease-out forwards; }
+.modal { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:24px; min-width:400px; max-width:500px; transform:scale(0.9); opacity:0; }
+@keyframes modalIn { from { transform:scale(0.9); opacity:0; } to { transform:scale(1); opacity:1; } }
+.modal h3 { color:var(--blue); margin-bottom:12px; font-size:15px; }
 .modal .field { margin-bottom:10px; }
-.modal .field label { display:block; margin-bottom:2px; }
+.modal .field label { display:block; margin-bottom:2px; font-size:12px; }
 .modal .field input { width:100%; }
+
 .month-nav { display:flex; align-items:center; gap:8px; }
-.month-nav span { min-width:100px; text-align:center; }
-#schedule-upload-area { border:2px dashed var(--border); border-radius:8px; padding:30px; text-align:center; cursor:pointer; margin-bottom:12px; }
-#schedule-upload-area:hover, #schedule-upload-area.dragover { border-color:var(--blue); }
-@media (max-width:768px) { .container { padding:10px; } .cards { grid-template-columns: repeat(2,1fr); } }
+.month-nav span { min-width:100px; text-align:center; font-weight:bold; }
+.month-nav .btn { font-size:14px; padding:4px 10px; }
+
+/* ===== 月份切换滑动 ===== */
+.schedule-slide { position:relative; overflow:hidden; }
+.schedule-slide-enter { animation:slideIn .25s ease-out; }
+.schedule-slide-left { animation:slideOutLeft .2s ease-in forwards; }
+.schedule-slide-right { animation:slideOutRight .2s ease-in forwards; }
+@keyframes slideIn { from { transform:translateX(30px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+@keyframes slideOutLeft { from { transform:translateX(0); opacity:1; } to { transform:translateX(-30px); opacity:0; } }
+@keyframes slideOutRight { from { transform:translateX(0); opacity:1; } to { transform:translateX(30px); opacity:0; } }
+
+#schedule-upload-area { border:2px dashed var(--border); border-radius:8px; padding:30px; text-align:center; cursor:pointer; margin-bottom:12px; transition:all .2s; }
+#schedule-upload-area:hover, #schedule-upload-area.dragover { border-color:var(--blue); background:rgba(88,166,255,0.05); }
+
+/* ===== 月历视图 ===== */
+.calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--border); border-radius:8px; overflow:hidden; margin-bottom:8px; }
+.calendar-header { background:var(--bg); color:var(--text-muted); text-align:center; padding:8px 4px; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; }
+.calendar-cell { background:var(--bg-card); min-height:80px; padding:6px; cursor:pointer; position:relative; transition:background .15s; }
+.calendar-cell:hover { background:rgba(88,166,255,0.06); }
+.calendar-cell.other-month { opacity:0.35; }
+.calendar-cell.today { border:1px solid var(--blue); }
+.calendar-cell .cal-date { font-size:12px; color:var(--text-muted); margin-bottom:2px; }
+.calendar-cell.today .cal-date { color:var(--blue); font-weight:bold; }
+.calendar-cell .cal-primary { font-size:12px; color:var(--green); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ===== Tooltip（日历格子悬浮详情） ===== */
+.calendar-cell .cal-tooltip { visibility:hidden; opacity:0; position:absolute; z-index:50; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%); background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:10px 14px; white-space:nowrap; font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,0.4); transition:opacity .15s, visibility .15s; pointer-events:none; }
+.calendar-cell:hover .cal-tooltip { visibility:visible; opacity:1; }
+.cal-tooltip .tip-row { color:var(--text-muted); margin-bottom:2px; }
+.cal-tooltip .tip-row strong { color:var(--text); }
+.cal-tooltip .tip-primary { color:var(--green); margin-bottom:4px; }
+.cal-tooltip .tip-backup { color:var(--yellow); }
+
+.calendar-empty { text-align:center; padding:40px; color:var(--text-muted); font-size:13px; }
+
+@media (max-width:768px) { .container { padding:10px; } .cards { grid-template-columns:repeat(2,1fr); } .modal { min-width:auto; width:90%; } .calendar-cell { min-height:60px; padding:4px; } }
 </style>
 </head>
 <body>
 
 <div class="dryrun-banner" id="dryrun-banner">⚠ DRY RUN 模式 — 不实际拨打电话</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toast-container"></div>
 
 <div class="header">
   <h1>📡 Webhook 监控面板</h1>
@@ -80,13 +159,21 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 <div class="container">
 
   <!-- 概览卡片 -->
-  <div class="cards">
+  <div class="cards" id="stats-cards">
     <div class="card"><div class="label">今日呼叫</div><div class="value" id="stat-total">-</div></div>
     <div class="card"><div class="label">已接通</div><div class="value green" id="stat-answered">-</div></div>
     <div class="card"><div class="label">未接</div><div class="value yellow" id="stat-noanswer">-</div></div>
     <div class="card"><div class="label">跳过</div><div class="value yellow" id="stat-skipped">-</div></div>
     <div class="card"><div class="label">失败</div><div class="value red" id="stat-failed">-</div></div>
     <div class="card"><div class="label">成功率</div><div class="value green" id="stat-rate">-</div></div>
+  </div>
+  <div id="stats-skeleton" class="cards" style="display:none">
+    <div class="card skeleton skeleton-card"></div>
+    <div class="card skeleton skeleton-card"></div>
+    <div class="card skeleton skeleton-card"></div>
+    <div class="card skeleton skeleton-card"></div>
+    <div class="card skeleton skeleton-card"></div>
+    <div class="card skeleton skeleton-card"></div>
   </div>
 
   <!-- 今日值班 -->
@@ -114,8 +201,10 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
       <input type="file" id="schedule-file-input" accept=".csv" style="display:none">
     </div>
     <div id="import-result" class="mb" style="display:none"></div>
-    <table id="schedule-table"><thead><tr><th>日期</th><th>业务组</th><th>主值班人</th><th>主值班电话</th><th>备值班人</th><th>备值班电话</th><th>操作</th></tr></thead><tbody></tbody></table>
-    <div class="text-muted" id="schedule-empty" style="display:none">该月暂无值班安排</div>
+    <div class="schedule-slide" id="schedule-slide">
+      <div class="calendar" id="calendar-grid"></div>
+      <div id="calendar-empty" class="calendar-empty" style="display:none">该月暂无值班安排</div>
+    </div>
   </div>
 
   <!-- 编辑日志 -->
@@ -141,39 +230,133 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 
 </div>
 
-<!-- 编辑弹窗 -->
-<div class="modal-overlay" id="edit-modal-overlay">
+<!-- 编辑主值班人弹窗 -->
+<div class="modal-overlay modal-edit" id="edit-primary-modal">
   <div class="modal">
-    <h3>✏ 编辑排班</h3>
-    <div class="field"><label>业务组</label><input id="edit-group" readonly></div>
-    <div class="field"><label>日期</label><input id="edit-date" readonly></div>
-    <div class="field"><label>主值班人</label><input id="edit-primary-name"></div>
-    <div class="field"><label>主值班电话</label><input id="edit-primary-phone"></div>
-    <div class="field"><label>备值班人</label><input id="edit-backup-name"></div>
-    <div class="field"><label>备值班电话</label><input id="edit-backup-phone"></div>
+    <h3>✏ 编辑主值班人</h3>
+    <div class="field"><label>日期</label><input id="ep-date" readonly></div>
+    <div class="field"><label>主值班人</label><input id="ep-name" placeholder="输入姓名"></div>
+    <div class="field"><label>主值班电话</label><input id="ep-phone" placeholder="输入手机号"></div>
     <div class="flex" style="justify-content:flex-end;margin-top:16px">
-      <button class="btn" onclick="closeEditModal()">取消</button>
-      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+      <button class="btn" onclick="closeModal('edit-primary-modal')">取消</button>
+      <button class="btn btn-primary" onclick="savePrimary()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑备值班人弹窗 -->
+<div class="modal-overlay modal-edit" id="edit-backup-modal">
+  <div class="modal">
+    <h3>✏ 编辑备值班人</h3>
+    <div class="field"><label>日期</label><input id="eb-date" readonly></div>
+    <div class="field"><label>业务组</label><input id="eb-group" readonly></div>
+    <div class="field"><label>备值班人</label><input id="eb-name" placeholder="输入姓名"></div>
+    <div class="field"><label>备值班电话</label><input id="eb-phone" placeholder="输入手机号"></div>
+    <div class="flex" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn" onclick="closeModal('edit-backup-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveBackup()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日值班详情弹窗（内联编辑） -->
+<div class="modal-overlay modal-day" id="day-detail-modal">
+  <div class="modal" style="min-width:520px;max-height:80vh;overflow-y:auto">
+    <h3>📅 <span id="dd-date"></span> 值班详情</h3>
+
+    <!-- 主值班人区 -->
+    <div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong style="color:var(--green)">主值班人</strong>
+        <div>
+          <button class="btn btn-sm" id="dd-primary-edit-btn" onclick="ddTogglePrimaryEdit()">✏</button>
+          <button class="btn btn-sm btn-danger" onclick="ddDeletePrimary()">✕</button>
+        </div>
+      </div>
+      <div id="dd-primary-view"><span style="color:var(--text-muted);font-size:12px">未设置</span></div>
+      <div id="dd-primary-edit" style="display:none;margin-top:8px">
+        <input id="dd-ep-name" placeholder="姓名" style="width:38%;margin-right:8px">
+        <input id="dd-ep-phone" placeholder="手机号" style="width:38%;margin-right:8px">
+        <button class="btn btn-sm btn-primary" onclick="ddSavePrimary()">保存</button>
+        <button class="btn btn-sm" onclick="ddCancelPrimaryEdit()">取消</button>
+      </div>
+    </div>
+
+    <!-- 备值班人区 -->
+    <div style="margin-bottom:8px"><strong style="font-size:13px">备值班人</strong></div>
+    <div id="dd-backups-list"></div>
+    <div id="dd-backups-empty" style="display:none;color:var(--text-muted);font-size:12px;padding:8px 0">暂无备值班人</div>
+    <div id="dd-new-backup" style="display:none;margin-top:8px">
+      <input id="dd-nb-group" placeholder="业务组" style="width:28%;margin-right:6px">
+      <input id="dd-nb-name" placeholder="姓名" style="width:24%;margin-right:6px">
+      <input id="dd-nb-phone" placeholder="手机号" style="width:28%;margin-right:6px">
+      <button class="btn btn-sm btn-primary" onclick="ddSaveNewBackup()">添加</button>
+      <button class="btn btn-sm" onclick="ddCancelNewBackup()">取消</button>
+    </div>
+    <button class="btn btn-sm" onclick="ddAddBackup()" style="margin-top:4px">+ 添加备值</button>
+
+    <div class="flex" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn" onclick="closeModal('day-detail-modal');refreshAll();loadCalendar();">关闭</button>
     </div>
   </div>
 </div>
 
 <script>
-// 全局状态（避免 toISOString 的时区偏移，手动拼 YYYY-MM）
-function fmtMonth(d) {
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+// ===== 工具函数 =====
+function fmtMonth(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function fmtDate(d) { return fmtMonth(d)+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtTime(s) { if(!s) return '-'; return s.replace('T',' ').slice(0,19); }
+function esc(s) { if(!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function jsesc(s) { if(!s) return ''; return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function sevBadge(level) {
+  const labels={1:'<span style="color:var(--red)">严重</span>',2:'<span style="color:var(--yellow)">警告</span>',3:'<span style="color:var(--text-muted)">提醒</span>'};
+  return labels[level]||level;
 }
-function fmtDate(d) {
-  return fmtMonth(d) + '-' + String(d.getDate()).padStart(2, '0');
+
+// ===== Toast 通知 =====
+function showToast(message, type, duration) {
+  type=type||'info'; duration=duration||3000;
+  const container=document.getElementById('toast-container');
+  const icons={success:'✓',error:'✕',warning:'⚠',info:'ℹ'};
+  const toast=document.createElement('div');
+  toast.className='toast toast-'+type;
+  toast.innerHTML='<span class="toast-icon">'+(icons[type]||'')+'</span><span>'+esc(message)+'</span>';
+  container.appendChild(toast);
+  setTimeout(()=>{ toast.classList.add('toast-leave'); setTimeout(()=>toast.remove(),250); },duration);
 }
+
+// ===== 骨架屏 =====
+function showSkeleton(id) {
+  const cards=document.getElementById(id);
+  const skel=document.getElementById(id+'-skeleton');
+  if(cards) cards.style.display='none';
+  if(skel) skel.style.display='grid';
+}
+function hideSkeleton(id) {
+  const cards=document.getElementById(id);
+  const skel=document.getElementById(id+'-skeleton');
+  if(cards) cards.style.display='grid';
+  if(skel) skel.style.display='none';
+}
+
+// ===== 更新数值（+闪光动画） =====
+function updateValue(id, newVal) {
+  const el=document.getElementById(id); if(!el) return;
+  const old=el.textContent;
+  el.textContent=newVal;
+  if(old!==newVal) { el.classList.remove('value-flash'); void el.offsetWidth; el.classList.add('value-flash'); }
+}
+
+// ===== 全局状态 =====
 let scheduleMonth = fmtMonth(new Date());
 let todayStr = fmtDate(new Date());
+let prevStats = {};
 
-// 初始化
-document.addEventListener('DOMContentLoaded', () => {
+// ===== 初始化 =====
+document.addEventListener('DOMContentLoaded', ()=>{
   document.getElementById('schedule-month-label').textContent = scheduleMonth;
-  refreshAll();
-  setInterval(refreshAll, 5000);
+  showSkeleton('stats');
+  refreshAll().finally(()=>{ hideSkeleton('stats'); setTimeout(autoRefresh, 5000); });
 });
 
 async function refreshAll() {
@@ -191,18 +374,25 @@ async function refreshAll() {
     const banner = document.getElementById('dryrun-banner');
     if (health.dry_run) banner.classList.add('show'); else banner.classList.remove('show');
 
-    document.getElementById('stat-total').textContent = stats.total_calls || 0;
-    document.getElementById('stat-answered').textContent = stats.answered || 0;
-    document.getElementById('stat-noanswer').textContent = stats.no_answer || 0;
-    document.getElementById('stat-skipped').textContent = stats.skipped || 0;
-    document.getElementById('stat-failed').textContent = stats.failed || 0;
-    document.getElementById('stat-rate').textContent = stats.success_rate ? stats.success_rate.toFixed(1) + '%' : '-';
+    updateValue('stat-total', stats.total_calls || 0);
+    updateValue('stat-answered', stats.answered || 0);
+    updateValue('stat-noanswer', stats.no_answer || 0);
+    updateValue('stat-skipped', stats.skipped || 0);
+    updateValue('stat-failed', stats.failed || 0);
+    updateValue('stat-rate', stats.success_rate ? stats.success_rate.toFixed(1)+'%' : '-');
 
     renderCalls(calls);
     renderCooldowns(cooldowns);
     renderTodaySchedule(todaySchedule);
     renderChanges(changes);
   } catch(e) { console.error('刷新失败', e); }
+}
+
+async function autoRefresh() {
+  showSkeleton('stats');
+  try { await refreshAll(); } catch(e) {}
+  hideSkeleton('stats');
+  setTimeout(autoRefresh, 5000);
 }
 
 // 呼叫历史
@@ -237,19 +427,27 @@ function renderCooldowns(items) {
   });
 }
 
-// 今日值班
-function renderTodaySchedule(entries) {
+// 今日值班（新模型：CalendarDay）
+function renderTodaySchedule(day) {
   const tbody = document.querySelector('#schedule-today-table tbody');
   const empty = document.getElementById('schedule-today-empty');
   tbody.innerHTML = '';
-  if (!entries || entries.length === 0) { empty.style.display = 'block'; return; }
+  if (!day || !day.date) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  entries.forEach(e => {
+
+  // 主值班人行
+  const trPrimary = document.createElement('tr');
+  trPrimary.innerHTML = `<td><strong>主值班人</strong></td><td>${esc(day.primary_name||'')}</td><td>${esc(day.primary_phone||'')}</td><td colspan="2">-</td>
+    <td><button class="btn btn-sm" onclick="editPrimary('${day.date}','${jsesc(day.primary_name||'')}','${jsesc(day.primary_phone||'')}')">✏</button>
+    <button class="btn btn-sm btn-danger" onclick="deletePrimary('${day.date}')">✕</button></td>`;
+  tbody.appendChild(trPrimary);
+
+  // 备值班人行
+  (day.backups||[]).forEach(b => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(e.group_name)}</td><td>${esc(e.primary_name)}</td><td>${esc(e.primary_phone)}</td>
-      <td>${esc(e.backup_name)}</td><td>${esc(e.backup_phone)}</td>
-      <td><button class="btn btn-sm" onclick="editEntry('${esc(e.group_name)}','${e.date}','${esc(e.primary_name)}','${e.primary_phone}','${esc(e.backup_name)}','${e.backup_phone}')">✏</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteEntry('${esc(e.group_name)}','${e.date}')">✕</button></td>`;
+    tr.innerHTML = `<td><span class="text-muted">${esc(b.group_name||'')} 备值</span></td><td>${esc(b.name||'')}</td><td>${esc(b.phone||'')}</td><td colspan="2">-</td>
+      <td><button class="btn btn-sm" onclick="editBackup('${day.date}','${jsesc(b.group_name)}','${jsesc(b.name||'')}','${jsesc(b.phone||'')}')">✏</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteBackup('${day.date}','${jsesc(b.group_name)}')">✕</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -269,88 +467,382 @@ function renderChanges(changes) {
   });
 }
 
-// 值班表月视图
-async function loadMonthSchedule() {
+// ===== 日历视图 =====
+
+// 获取当月日历数据
+async function loadCalendar() {
   try {
-    const resp = await fetch(`/api/v1/schedule/export?month=${scheduleMonth}`);
-    if (!resp.ok) { document.getElementById('schedule-month-count').textContent = '加载失败'; return; }
-    const text = await resp.text();
-    const lines = text.trim().split('\n');
-    document.getElementById('schedule-month-count').textContent = lines.length > 1 ? `${lines.length-1} 条排班` : '';
-    renderMonthSchedule(lines);
+    const resp = await fetch(`/api/v1/schedule/calendar?month=${scheduleMonth}`);
+    if (!resp.ok) { document.getElementById('calendar-empty').style.display='block'; return; }
+    const days = await resp.json();
+    const count = days.filter(d => d.primary_name).length;
+    document.getElementById('schedule-month-count').textContent = count > 0 ? `${count} 天有值班` : '';
+    renderCalendar(days);
   } catch(e) { console.error(e); }
 }
-function renderMonthSchedule(lines) {
-  const tbody = document.querySelector('#schedule-table tbody');
-  const empty = document.getElementById('schedule-empty');
-  tbody.innerHTML = '';
-  if (lines.length <= 1) { empty.style.display = 'block'; return; }
-  empty.style.display = 'none';
-  for (let i=1; i<lines.length; i++) {
-    const cols = parseCSVLine(lines[i]);
-    if (cols.length < 5) continue;
-    const [group, date, pname, pphone, bname, bphone] = cols;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${date}</td><td>${esc(group)}</td><td>${esc(pname)}</td><td>${esc(pphone)}</td>
-      <td>${esc(bname||'')}</td><td>${esc(bphone||'')}</td>
-      <td>${date >= todayStr ? `<button class="btn btn-sm" onclick="editEntry('${esc(group)}','${date}','${esc(pname)}','${esc(pphone)}','${esc(bname)}','${esc(bphone)}')">✏</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteEntry('${esc(group)}','${date}')">✕</button>` : '<span class="text-muted">已过去</span>'}</td>`;
-    tbody.appendChild(tr);
+
+// 渲染月历
+function renderCalendar(days) {
+  const grid = document.getElementById('calendar-grid');
+  const empty = document.getElementById('calendar-empty');
+  grid.innerHTML = '';
+
+  if (!days || days.length === 0) { empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  // 构建日期→数据 map
+  const dayMap = {};
+  days.forEach(d => { dayMap[d.date] = d; });
+
+  // 第一天是周几（0=Sun, 1=Mon...）
+  const firstDate = new Date(days[0].date + 'T00:00:00');
+  const month = firstDate.getMonth();
+  // 计算起始对齐：找到该月第一个周一
+  // JS: getDay()=0(Sun)...6(Sat)，我们想要 Mon(1)=0
+  let startDay = firstDate.getDay(); // 0=Sun
+  // 转为周一始：Mon=0, Tue=1...Sun=6
+  let offset = (startDay === 0) ? 6 : startDay - 1;
+
+  // 表头：周一~周日
+  const headers = ['周一','周二','周三','周四','周五','周六','周日'];
+  headers.forEach(h => {
+    const el = document.createElement('div');
+    el.className = 'calendar-header';
+    el.textContent = h;
+    grid.appendChild(el);
+  });
+
+  // 空白格对齐
+  for (let i=0; i<offset; i++) {
+    const el = document.createElement('div');
+    el.className = 'calendar-cell other-month';
+    grid.appendChild(el);
+  }
+
+  // 日期格
+  const today = fmtDate(new Date());
+  days.forEach(d => {
+    const dt = new Date(d.date + 'T00:00:00');
+    const isToday = d.date === today;
+    const cell = document.createElement('div');
+    cell.className = 'calendar-cell' + (isToday ? ' today' : '');
+
+    // 日期数字
+    const dateEl = document.createElement('div');
+    dateEl.className = 'cal-date';
+    dateEl.textContent = dt.getDate();
+    cell.appendChild(dateEl);
+
+    // 主值班人
+    if (d.primary_name) {
+      const nameEl = document.createElement('div');
+      nameEl.className = 'cal-primary';
+      nameEl.textContent = d.primary_name;
+      cell.appendChild(nameEl);
+    }
+
+    // Tooltip
+    const tip = document.createElement('div');
+    tip.className = 'cal-tooltip';
+    let tipHTML = '';
+    if (d.primary_name) {
+      tipHTML += `<div class="tip-row tip-primary"><strong>主值:</strong> ${esc(d.primary_name)} (${esc(d.primary_phone)})</div>`;
+    }
+    if (d.backups && d.backups.length > 0) {
+      d.backups.forEach(b => {
+        tipHTML += `<div class="tip-row tip-backup"><strong>${esc(b.group_name)}:</strong> ${esc(b.name||'-')} (${esc(b.phone)})</div>`;
+      });
+    }
+    if (!tipHTML) { tipHTML = '<div class="tip-row">无值班安排</div>'; }
+    tip.innerHTML = tipHTML;
+    cell.appendChild(tip);
+
+    // 点击 → 日详情
+    cell.onclick = () => showDayDetail(d);
+
+    grid.appendChild(cell);
+  });
+
+  // 末尾空白格补满
+  const total = offset + days.length;
+  const remainder = total % 7;
+  if (remainder > 0) {
+    for (let i=0; i<7-remainder; i++) {
+      const el = document.createElement('div');
+      el.className = 'calendar-cell other-month';
+      grid.appendChild(el);
+    }
   }
 }
 
-// CSV 行解析
-function parseCSVLine(line) {
-  const result = []; let current = ''; let inQuotes = false;
-  for (let ch of line) {
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
-    else { current += ch; }
-  }
-  result.push(current.trim());
-  return result;
-}
+// 替代之前的 loadMonthSchedule
+function loadMonthSchedule() { loadCalendar(); }
 
-// 编辑弹窗
-function editEntry(group, date, pname, pphone, bname, bphone) {
-  document.getElementById('edit-group').value = group;
-  document.getElementById('edit-date').value = date;
-  document.getElementById('edit-primary-name').value = pname;
-  document.getElementById('edit-primary-phone').value = pphone;
-  document.getElementById('edit-backup-name').value = bname;
-  document.getElementById('edit-backup-phone').value = bphone;
-  document.getElementById('edit-modal-overlay').classList.add('show');
+// ===== 编辑弹窗（新模型） =====
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+
+// 编辑主值
+function editPrimary(date, name, phone) {
+  document.getElementById('ep-date').value = date;
+  document.getElementById('ep-name').value = name;
+  document.getElementById('ep-phone').value = phone;
+  openModal('edit-primary-modal');
 }
-function closeEditModal() {
-  document.getElementById('edit-modal-overlay').classList.remove('show');
-}
-async function saveEdit() {
+async function savePrimary() {
   const body = {
-    group_name: document.getElementById('edit-group').value,
-    date: document.getElementById('edit-date').value,
-    primary_name: document.getElementById('edit-primary-name').value,
-    primary_phone: document.getElementById('edit-primary-phone').value,
-    backup_name: document.getElementById('edit-backup-name').value,
-    backup_phone: document.getElementById('edit-backup-phone').value,
+    date: document.getElementById('ep-date').value,
+    name: document.getElementById('ep-name').value,
+    phone: document.getElementById('ep-phone').value,
   };
-  const resp = await fetch('/api/v1/schedule/entry', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-  if (resp.ok) { closeEditModal(); refreshAll(); loadMonthSchedule(); }
-  else { const err = await resp.json(); alert('保存失败: ' + (err.error || resp.status)); }
-}
-async function deleteEntry(group, date) {
-  if (!confirm(`确认删除 ${group} ${date} 的排班？`)) return;
-  const resp = await fetch(`/api/v1/schedule/entry?group=${encodeURIComponent(group)}&date=${date}`, { method:'DELETE' });
-  if (resp.ok) { refreshAll(); loadMonthSchedule(); }
-  else { const err = await resp.json(); alert('删除失败: ' + (err.error || resp.status)); }
+  const resp = await fetch('/api/v1/schedule/primary', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (resp.ok) { closeModal('edit-primary-modal'); refreshAll(); loadCalendar(); showToast('保存成功','success'); }
+  else { const err = await resp.json(); showToast('保存失败: '+(err.error||resp.status),'error'); }
 }
 
-// 导航月份
+// 删除主值
+async function deletePrimary(date) {
+  if (!confirm(`确认删除 ${date} 的主值班人？`)) return;
+  const resp = await fetch('/api/v1/schedule/primary?date='+date, { method:'DELETE' });
+  if (resp.ok) { refreshAll(); loadCalendar(); showToast('删除成功','success'); }
+  else { const err = await resp.json(); showToast('删除失败: '+(err.error||resp.status),'error'); }
+}
+
+// 编辑备值
+function editBackup(date, group, name, phone) {
+  document.getElementById('eb-date').value = date;
+  document.getElementById('eb-group').value = group;
+  document.getElementById('eb-name').value = name||'';
+  document.getElementById('eb-phone').value = phone;
+  openModal('edit-backup-modal');
+}
+async function saveBackup() {
+  const body = {
+    date: document.getElementById('eb-date').value,
+    group_name: document.getElementById('eb-group').value,
+    name: document.getElementById('eb-name').value,
+    phone: document.getElementById('eb-phone').value,
+  };
+  const resp = await fetch('/api/v1/schedule/backup', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (resp.ok) { closeModal('edit-backup-modal'); refreshAll(); loadCalendar(); showToast('保存成功','success'); }
+  else { const err = await resp.json(); showToast('保存失败: '+(err.error||resp.status),'error'); }
+}
+
+// 删除备值
+async function deleteBackup(date, group) {
+  if (!confirm(`确认删除 ${date} ${group} 的备值班人？`)) return;
+  const resp = await fetch('/api/v1/schedule/backup?date='+date+'&group='+encodeURIComponent(group), { method:'DELETE' });
+  if (resp.ok) { refreshAll(); loadCalendar(); showToast('删除成功','success'); }
+  else { const err = await resp.json(); showToast('删除失败: '+(err.error||resp.status),'error'); }
+}
+
+// ===== 日值班详情弹窗（内联编辑） =====
+
+let ddDate = '';
+let ddData = null;
+
+function showDayDetail(d) {
+  ddDate = d.date;
+  ddData = d;
+  document.getElementById('dd-date').textContent = d.date;
+
+  ddUpdatePrimaryView(d.primary_name, d.primary_phone);
+  document.getElementById('dd-primary-edit').style.display = 'none';
+  ddRenderBackups(d.backups);
+
+  openModal('day-detail-modal');
+}
+
+function ddUpdatePrimaryView(name, phone) {
+  const view = document.getElementById('dd-primary-view');
+  view.innerHTML = name ? `${esc(name)} — ${esc(phone)}` : '<span style="color:var(--text-muted);font-size:12px">未设置</span>';
+}
+
+function ddTogglePrimaryEdit() {
+  const edit = document.getElementById('dd-primary-edit');
+  if (edit.style.display === 'none') {
+    document.getElementById('dd-ep-name').value = ddData && ddData.primary_name || '';
+    document.getElementById('dd-ep-phone').value = ddData && ddData.primary_phone || '';
+    edit.style.display = 'block';
+  } else {
+    edit.style.display = 'none';
+  }
+}
+
+function ddCancelPrimaryEdit() {
+  document.getElementById('dd-primary-edit').style.display = 'none';
+}
+
+async function ddSavePrimary() {
+  const name = document.getElementById('dd-ep-name').value;
+  const phone = document.getElementById('dd-ep-phone').value;
+  if (!phone) { showToast('请输入手机号','error'); return; }
+  const resp = await fetch('/api/v1/schedule/primary', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date:ddDate, name, phone})
+  });
+  if (resp.ok) {
+    showToast('保存成功','success');
+    document.getElementById('dd-primary-edit').style.display = 'none';
+    ddData.primary_name = name; ddData.primary_phone = phone;
+    ddUpdatePrimaryView(name, phone);
+    loadCalendar();
+  } else {
+    const err = await resp.json();
+    showToast('保存失败: '+(err.error||resp.status),'error');
+  }
+}
+
+async function ddDeletePrimary() {
+  if (!confirm(`确认删除 ${ddDate} 的主值班人？`)) return;
+  const resp = await fetch('/api/v1/schedule/primary?date='+ddDate, { method:'DELETE' });
+  if (resp.ok) {
+    showToast('删除成功','success');
+    ddData.primary_name = ''; ddData.primary_phone = '';
+    ddUpdatePrimaryView('','');
+    loadCalendar();
+  } else {
+    const err = await resp.json();
+    showToast('删除失败: '+(err.error||resp.status),'error');
+  }
+}
+
+function ddRenderBackups(backups) {
+  const list = document.getElementById('dd-backups-list');
+  const empty = document.getElementById('dd-backups-empty');
+  list.innerHTML = '';
+  if (backups && backups.length > 0) {
+    empty.style.display = 'none';
+    backups.forEach((b, i) => ddAppendBackupRow(list, b, i));
+  } else {
+    empty.style.display = 'block';
+  }
+}
+
+function ddAppendBackupRow(list, b, idx) {
+  const row = document.createElement('div');
+  row.id = 'dd-brow-'+idx;
+  row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px';
+
+  const viewDiv = document.createElement('div');
+  viewDiv.style.cssText = 'flex:1;display:flex;justify-content:space-between;align-items:center';
+  viewDiv.innerHTML = `<div><strong>${esc(b.group_name||'')}</strong> ${esc(b.name||'-')} (${esc(b.phone||'')})</div>
+    <div><button class="btn btn-sm" onclick="ddBackupEdit(${idx})">✏</button>
+    <button class="btn btn-sm btn-danger" onclick="ddBackupDelete('${jsesc(b.group_name)}')">✕</button></div>`;
+
+  const editDiv = document.createElement('div');
+  editDiv.id = 'dd-bedit-'+idx;
+  editDiv.style.cssText = 'flex:1;display:none;justify-content:space-between;align-items:center';
+  editDiv.innerHTML = `<div>
+    <strong>${esc(b.group_name||'')}</strong>
+    <input id="dd-be-name-${idx}" value="${esc(b.name||'')}" placeholder="姓名" style="width:120px;margin:0 6px">
+    <input id="dd-be-phone-${idx}" value="${esc(b.phone||'')}" placeholder="手机号" style="width:140px;margin-right:6px">
+    <button class="btn btn-sm btn-primary" onclick="ddBackupSave(${idx},'${jsesc(b.group_name)}')">保存</button>
+    <button class="btn btn-sm" onclick="ddBackupCancel(${idx})">取消</button></div>`;
+
+  row.appendChild(viewDiv);
+  row.appendChild(editDiv);
+  list.appendChild(row);
+}
+
+function ddBackupEdit(idx) {
+  document.getElementById('dd-brow-'+idx).querySelectorAll('div')[0].style.display = 'none';
+  document.getElementById('dd-bedit-'+idx).style.display = 'flex';
+}
+
+function ddBackupCancel(idx) {
+  document.getElementById('dd-bedit-'+idx).style.display = 'none';
+  document.getElementById('dd-brow-'+idx).querySelectorAll('div')[0].style.display = 'flex';
+}
+
+async function ddBackupSave(idx, group) {
+  const name = document.getElementById('dd-be-name-'+idx).value;
+  const phone = document.getElementById('dd-be-phone-'+idx).value;
+  if (!phone) { showToast('请输入手机号','error'); return; }
+  const resp = await fetch('/api/v1/schedule/backup', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date:ddDate, group_name:group, name, phone})
+  });
+  if (resp.ok) {
+    showToast('保存成功','success');
+    const calResp = await fetch(`/api/v1/schedule/calendar?month=${ddDate.slice(0,7)}`);
+    const days = await calResp.json();
+    const updated = days.find(d => d.date === ddDate);
+    if (updated) { ddData = updated; ddRenderBackups(updated.backups); }
+    loadCalendar();
+  } else {
+    const err = await resp.json();
+    showToast('保存失败: '+(err.error||resp.status),'error');
+  }
+}
+
+async function ddBackupDelete(group) {
+  if (!confirm(`确认删除 ${ddDate} ${group} 的备值班人？`)) return;
+  const resp = await fetch('/api/v1/schedule/backup?date='+ddDate+'&group='+encodeURIComponent(group), { method:'DELETE' });
+  if (resp.ok) {
+    showToast('删除成功','success');
+    const calResp = await fetch(`/api/v1/schedule/calendar?month=${ddDate.slice(0,7)}`);
+    const days = await calResp.json();
+    const updated = days.find(d => d.date === ddDate);
+    if (updated) { ddData = updated; ddRenderBackups(updated.backups); }
+    loadCalendar();
+  } else {
+    const err = await resp.json();
+    showToast('删除失败: '+(err.error||resp.status),'error');
+  }
+}
+
+function ddAddBackup() {
+  document.getElementById('dd-nb-group').value = '';
+  document.getElementById('dd-nb-name').value = '';
+  document.getElementById('dd-nb-phone').value = '';
+  document.getElementById('dd-new-backup').style.display = 'block';
+}
+
+function ddCancelNewBackup() {
+  document.getElementById('dd-new-backup').style.display = 'none';
+}
+
+async function ddSaveNewBackup() {
+  const group = document.getElementById('dd-nb-group').value;
+  const name = document.getElementById('dd-nb-name').value;
+  const phone = document.getElementById('dd-nb-phone').value;
+  if (!group || !phone) { showToast('业务组和手机号不能为空','error'); return; }
+  const resp = await fetch('/api/v1/schedule/backup', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date:ddDate, group_name:group, name, phone})
+  });
+  if (resp.ok) {
+    showToast('添加成功','success');
+    document.getElementById('dd-new-backup').style.display = 'none';
+    const calResp = await fetch(`/api/v1/schedule/calendar?month=${ddDate.slice(0,7)}`);
+    const days = await calResp.json();
+    const updated = days.find(d => d.date === ddDate);
+    if (updated) { ddData = updated; ddRenderBackups(updated.backups); }
+    loadCalendar();
+  } else {
+    const err = await resp.json();
+    showToast('添加失败: '+(err.error||resp.status),'error');
+  }
+}
+
+// 导航月份（带滑动动画）
 function navMonth(dir) {
-  const [y,m] = scheduleMonth.split('-').map(Number);
-  const d = new Date(y, m-1 + dir, 1);
-  scheduleMonth = fmtMonth(d);
-  document.getElementById('schedule-month-label').textContent = scheduleMonth;
-  loadMonthSchedule();
+  const slide = document.getElementById('schedule-slide');
+  // 淡出旧内容
+  slide.classList.add(dir > 0 ? 'schedule-slide-right' : 'schedule-slide-left');
+  // 等动画完成再加载新内容
+  setTimeout(() => {
+    slide.classList.remove('schedule-slide-right', 'schedule-slide-left');
+    const [y,m] = scheduleMonth.split('-').map(Number);
+    const d = new Date(y, m-1 + dir, 1);
+    scheduleMonth = fmtMonth(d);
+    document.getElementById('schedule-month-label').textContent = scheduleMonth;
+    loadCalendar();
+    slide.classList.add('schedule-slide-enter');
+    setTimeout(() => slide.classList.remove('schedule-slide-enter'), 250);
+  }, 180);
 }
 
 // 导出 CSV
@@ -375,26 +867,15 @@ async function handleFile(file) {
   form.append('file', file);
   const resp = await fetch('/api/v1/schedule/import', { method:'POST', body:form });
   const result = await resp.json();
-  const div = document.getElementById('import-result');
-  div.style.display = 'block';
-  if (resp.ok) { div.innerHTML = `<span style="color:var(--green)">✓ 导入成功: ${result.imported}/${result.total} 条</span>`; }
-  else { div.innerHTML = `<span style="color:var(--red)">✕ 导入失败: ${result.error}</span>`; }
   document.getElementById('schedule-upload-area').style.display = 'none';
   refreshAll();
   loadMonthSchedule();
-  setTimeout(() => { div.style.display = 'none'; }, 5000);
+  if (resp.ok) { showToast('导入成功: '+result.imported+'/'+result.total+' 条','success'); }
+  else { showToast('导入失败: '+result.error,'error'); }
 }
 
-// 工具函数
-function fmtTime(s) { if (!s) return '-'; return s.replace('T',' ').slice(0,19); }
-function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function sevBadge(level) {
-  const labels = {1:'<span style="color:var(--red)">严重</span>', 2:'<span style="color:var(--yellow)">警告</span>', 3:'<span style="color:var(--text-muted)">提醒</span>'};
-  return labels[level] || level;
-}
-
-// 初始化月份
-loadMonthSchedule();
+// 初始化日历
+loadCalendar();
 </script>
 </body>
 </html>

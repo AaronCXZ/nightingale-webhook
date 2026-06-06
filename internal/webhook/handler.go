@@ -243,27 +243,38 @@ func (h *Handler) processEvent(ctx context.Context, event *alert.Event, dryRun b
 
 // resolvePhones 拼装电话号码列表
 func (h *Handler) resolvePhones(event *alert.Event) []string {
-	// 准备 server_groups 的 phones map
 	groups := make(map[string][]string, len(h.cfg.ServerGroups))
 	for name, sg := range h.cfg.ServerGroups {
 		groups[name] = sg.Phones
 	}
 
-	// 尝试匹配值班表
+	// 新模型：查主值 + 查对应组备值
 	var scheduleEntry *alert.OncallEntry
 	source := "default"
 	if event.GroupName != "" {
 		today := time.Now().UTC().Format("2006-01-02")
-		entry, err := h.store.GetOncallByDate(event.GroupName, today)
+
+		primary, err := h.store.GetOncallPrimary(today)
 		if err != nil {
-			slog.Warn("failed to query oncall schedule", "group", event.GroupName, "error", err)
+			slog.Warn("failed to query primary oncall", "group", event.GroupName, "error", err)
 		}
-		if entry != nil {
+		if primary != nil {
 			scheduleEntry = &alert.OncallEntry{
-				PrimaryPhone: entry.PrimaryPhone,
-				BackupPhone:  entry.BackupPhone,
+				PrimaryPhone: primary.Phone,
 			}
 			source = "schedule"
+
+			// 查该组备值
+			backups, err := h.store.GetOncallBackups(today)
+			if err != nil {
+				slog.Warn("failed to query backup oncall", "group", event.GroupName, "error", err)
+			}
+			for _, b := range backups {
+				if b.GroupName == event.GroupName {
+					scheduleEntry.BackupPhone = b.Phone
+					break
+				}
+			}
 		} else if _, ok := groups[event.GroupName]; ok {
 			source = "server_group"
 		}

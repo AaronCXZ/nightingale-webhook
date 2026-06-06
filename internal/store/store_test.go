@@ -120,49 +120,134 @@ func TestSaveAndGetRecords(t *testing.T) {
 
 func TestScheduleCRUD(t *testing.T) {
 	s := newTestStore(t)
+	tomorrow := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
 
-	// Import
-	n, err := s.ImportSchedule([]OncallEntry{
-		{GroupName: "ops", Date: "2026-06-01", PrimaryName: "张三", PrimaryPhone: "13800001111", BackupName: "李四", BackupPhone: "13800002222"},
-		{GroupName: "web", Date: "2026-06-01", PrimaryName: "王五", PrimaryPhone: "13900001111"},
-	})
+	// --- Primary CRUD ---
+
+	// Upsert primary
+	err := s.UpsertPrimary(OncallPrimary{Date: tomorrow, Name: "张三", Phone: "13800001111"})
+	if err != nil {
+		t.Fatalf("UpsertPrimary 错误: %v", err)
+	}
+	primary, err := s.GetOncallPrimary(tomorrow)
+	if err != nil {
+		t.Fatalf("GetOncallPrimary 错误: %v", err)
+	}
+	if primary == nil {
+		t.Fatal("primary 为 nil")
+	}
+	if primary.Name != "张三" {
+		t.Errorf("Name 应为 张三，got %s", primary.Name)
+	}
+	if primary.Phone != "13800001111" {
+		t.Errorf("Phone 应为 13800001111，got %s", primary.Phone)
+	}
+
+	// Update primary
+	err = s.UpsertPrimary(OncallPrimary{Date: tomorrow, Name: "李四", Phone: "13900002222"})
+	if err != nil {
+		t.Fatalf("UpsertPrimary 更新错误: %v", err)
+	}
+	primary, _ = s.GetOncallPrimary(tomorrow)
+	if primary.Name != "李四" {
+		t.Errorf("更新后 Name 应为 李四，got %s", primary.Name)
+	}
+
+	// Delete primary
+	err = s.DeletePrimary(tomorrow)
+	if err != nil {
+		t.Fatalf("DeletePrimary 错误: %v", err)
+	}
+	primary, _ = s.GetOncallPrimary(tomorrow)
+	if primary != nil {
+		t.Error("删除后 primary 应为 nil")
+	}
+
+	// --- Backup CRUD ---
+
+	// Upsert backup
+	err = s.UpsertBackup(OncallBackup{Date: tomorrow, GroupName: "ops", Name: "王五", Phone: "13700003333"})
+	if err != nil {
+		t.Fatalf("UpsertBackup 错误: %v", err)
+	}
+	backups, err := s.GetOncallBackups(tomorrow)
+	if err != nil {
+		t.Fatalf("GetOncallBackups 错误: %v", err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("应有 1 条 backup，got %d", len(backups))
+	}
+	if backups[0].GroupName != "ops" {
+		t.Errorf("GroupName 应为 ops，got %s", backups[0].GroupName)
+	}
+
+	// Add second backup
+	err = s.UpsertBackup(OncallBackup{Date: tomorrow, GroupName: "web", Name: "赵六", Phone: "13600004444"})
+	if err != nil {
+		t.Fatalf("UpsertBackup 2 错误: %v", err)
+	}
+	backups, _ = s.GetOncallBackups(tomorrow)
+	if len(backups) != 2 {
+		t.Fatalf("应有 2 条 backup，got %d", len(backups))
+	}
+
+	// Delete backup
+	err = s.DeleteBackup(tomorrow, "ops")
+	if err != nil {
+		t.Fatalf("DeleteBackup 错误: %v", err)
+	}
+	backups, _ = s.GetOncallBackups(tomorrow)
+	if len(backups) != 1 {
+		t.Fatalf("删除后应有 1 条 backup，got %d", len(backups))
+	}
+	if backups[0].GroupName != "web" {
+		t.Errorf("剩余应为 web，got %s", backups[0].GroupName)
+	}
+}
+
+func TestCalendarMonth(t *testing.T) {
+	s := newTestStore(t)
+
+	// 导入整月数据
+	primaries := []OncallPrimary{
+		{Date: "2026-06-01", Name: "张三", Phone: "13800001111"},
+		{Date: "2026-06-02", Name: "李四", Phone: "13900002222"},
+	}
+	backups := []OncallBackup{
+		{Date: "2026-06-01", GroupName: "ops", Name: "王五", Phone: "13700003333"},
+		{Date: "2026-06-01", GroupName: "web", Name: "赵六", Phone: "13600004444"},
+	}
+
+	pCount, bCount, err := s.ImportSchedule(primaries, backups)
 	if err != nil {
 		t.Fatalf("ImportSchedule 错误: %v", err)
 	}
-	if n != 2 {
-		t.Errorf("应导入 2 条，got %d", n)
+	if pCount != 2 {
+		t.Errorf("应导入 2 条 primary，got %d", pCount)
+	}
+	if bCount != 2 {
+		t.Errorf("应导入 2 条 backup，got %d", bCount)
 	}
 
-	// Get
-	entry, err := s.GetOncallByDate("ops", "2026-06-01")
+	days, err := s.GetCalendarMonth("2026-06")
 	if err != nil {
-		t.Fatalf("GetOncallByDate 错误: %v", err)
+		t.Fatalf("GetCalendarMonth 错误: %v", err)
 	}
-	if entry == nil {
-		t.Fatal("entry 为 nil")
-	}
-	if entry.PrimaryName != "张三" {
-		t.Errorf("主值班人应为张三，got %s", entry.PrimaryName)
+	if len(days) != 30 {
+		t.Fatalf("6 月应有 30 天，got %d", len(days))
 	}
 
-	// Update
-	err = s.UpdateScheduleEntry("ops", "2026-06-01", OncallEntry{PrimaryName: "赵六", PrimaryPhone: "13800003333"})
-	if err != nil {
-		t.Fatalf("UpdateScheduleEntry 错误: %v", err)
+	// Check first day
+	if days[0].PrimaryName != "张三" {
+		t.Errorf("6/1 主值应为 张三，got %s", days[0].PrimaryName)
 	}
-	entry, _ = s.GetOncallByDate("ops", "2026-06-01")
-	if entry.PrimaryName != "赵六" {
-		t.Errorf("更新后主值班人应为赵六，got %s", entry.PrimaryName)
+	if len(days[0].Backups) != 2 {
+		t.Errorf("6/1 应有 2 个备值，got %d", len(days[0].Backups))
 	}
 
-	// Delete
-	err = s.DeleteScheduleEntry("ops", "2026-06-01")
-	if err != nil {
-		t.Fatalf("DeleteScheduleEntry 错误: %v", err)
-	}
-	entry, _ = s.GetOncallByDate("ops", "2026-06-01")
-	if entry != nil {
-		t.Error("删除后 entry 应为 nil")
+	// Check day without data
+	if days[2].PrimaryName != "" {
+		t.Errorf("6/3 无主值应为空，got %s", days[2].PrimaryName)
 	}
 }
 

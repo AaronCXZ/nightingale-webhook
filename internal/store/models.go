@@ -21,7 +21,7 @@ type CallRecord struct {
 	NextPollAt     *string `json:"next_poll_at"`
 }
 
-// OncallEntry 值班表条目
+// OncallEntry 值班表条目（旧模型，迁移中保留）
 type OncallEntry struct {
 	ID           int64  `json:"id"`
 	GroupName    string `json:"group_name" csv:"group_name"`
@@ -30,6 +30,31 @@ type OncallEntry struct {
 	PrimaryPhone string `json:"primary_phone" csv:"primary_phone"`
 	BackupName   string `json:"backup_name" csv:"backup_name"`
 	BackupPhone  string `json:"backup_phone" csv:"backup_phone"`
+}
+
+// OncallPrimary 每日主值班人（每天唯一）
+type OncallPrimary struct {
+	ID    int64  `json:"id"`
+	Date  string `json:"date"`
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+}
+
+// OncallBackup 每日各组备值班人
+type OncallBackup struct {
+	ID        int64  `json:"id"`
+	Date      string `json:"date"`
+	GroupName string `json:"group_name"`
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+}
+
+// CalendarDay 日历每日详情
+type CalendarDay struct {
+	Date         string         `json:"date"`
+	PrimaryName  string         `json:"primary_name"`
+	PrimaryPhone string         `json:"primary_phone"`
+	Backups      []OncallBackup `json:"backups"`
 }
 
 // ScheduleChange 值班表编辑日志
