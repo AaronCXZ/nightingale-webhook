@@ -18,6 +18,9 @@
   --purple: #a371f7;
 }
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+.loading-bar { position:fixed; top:0; left:0; height:2px; background:var(--blue); z-index:300; transition:width .4s ease; width:0; pointer-events:none; }
+.loading-bar.active { width:60%; animation:loadingPulse 1.5s ease-in-out infinite; }
+@keyframes loadingPulse { 0%{width:10%} 50%{width:70%} 100%{width:30%} }
 body { background:var(--bg); color:var(--text); font-family:'Menlo','Monaco','Courier New',monospace; font-size:13px; line-height:1.5; }
 .header { background:var(--bg-card); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:50; }
 .header h1 { font-size:16px; color:var(--green); }
@@ -80,6 +83,10 @@ tbody tr:hover { background:rgba(88,166,255,0.06); }
 .btn { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; cursor:pointer; font-family:inherit; font-size:12px; transition:all .15s; }
 .btn:hover { background:var(--border); transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,0.2); }
 .btn:active { transform:scale(0.97); }
+.btn:disabled { opacity:0.5; cursor:not-allowed; transform:none !important; }
+.btn-loading { position:relative; color:transparent !important; pointer-events:none; }
+.btn-loading::after { content:''; position:absolute; inset:0; margin:auto; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:btnSpin .6s linear infinite; }
+@keyframes btnSpin { to { transform:rotate(360deg); } }
 .btn-primary { background:var(--green); color:#000; border-color:var(--green); font-weight:bold; }
 .btn-primary:hover { background:#4cd964; opacity:1; }
 .btn-danger { background:var(--red); color:#fff; border-color:var(--red); }
@@ -92,6 +99,11 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 .flex { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .mb { margin-bottom:12px; }
 .text-muted { color:var(--text-muted); font-size:11px; }
+.ic { width:16px; height:16px; vertical-align:middle; margin-right:4px; display:inline-block; flex-shrink:0; }
+.ic-sm { width:12px; height:12px; vertical-align:middle; display:inline-block; flex-shrink:0; }
+button .ic, .btn .ic { margin-right:0; }
+.btn .ic-sm { margin-right:2px; }
+.ic-link { display:inline-flex; align-items:center; gap:4px; }
 
 /* ===== 动效弹窗 ===== */
 .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0); z-index:100; justify-content:center; align-items:center; transition:background .2s; }
@@ -142,17 +154,81 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 .calendar-empty { text-align:center; padding:40px; color:var(--text-muted); font-size:13px; }
 
 @media (max-width:768px) { .container { padding:10px; } .cards { grid-template-columns:repeat(2,1fr); } .modal { min-width:auto; width:90%; } .calendar-cell { min-height:60px; padding:4px; } }
+@media (hover:none) { .calendar-cell .cal-tooltip { display:none; } }
 </style>
 </head>
 <body>
+<!-- SVG 图标精灵（隐藏） -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="ic-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18.364 5.636a9 9 0 0 1 0 12.728M5.636 5.636a9 9 0 0 0 0 12.728"/>
+    <path d="M8.464 8.464a5 5 0 0 0 0 7.072M15.536 8.464a5 5 0 0 1 0 7.072"/>
+    <circle cx="12" cy="12" r="2"/>
+  </symbol>
+  <symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+  </symbol>
+  <symbol id="ic-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>
+  </symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+  </symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>
+  </symbol>
+  <symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+  </symbol>
+  <symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+  </symbol>
+  <symbol id="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </symbol>
+  <symbol id="ic-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 18 9 12 15 6"/>
+  </symbol>
+  <symbol id="ic-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="9 18 15 12 9 6"/>
+  </symbol>
+  <symbol id="ic-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+  </symbol>
+  <symbol id="ic-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+  </symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </symbol>
+  <symbol id="ic-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  </symbol>
+  <symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+  </symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </symbol>
+  <symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+  </symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+  </symbol>
+  <symbol id="ic-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+  </symbol>
+</svg>
 
 <div class="dryrun-banner" id="dryrun-banner">⚠ DRY RUN 模式 — 不实际拨打电话</div>
+<div class="loading-bar" id="loading-bar"></div>
 
 <!-- Toast 容器 -->
-<div class="toast-container" id="toast-container"></div>
+<div class="toast-container" id="toast-container" role="status" aria-live="polite" aria-label="通知消息"></div>
 
 <div class="header">
-  <h1>📡 Webhook 监控面板</h1>
+  <h1><svg class="ic" width="20" height="20" viewBox="0 0 24 24"><use href="#ic-signal"/></svg> Webhook 监控面板</h1>
   <div class="info" id="header-info">运行中…</div>
 </div>
 
@@ -178,22 +254,22 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 
   <!-- 今日值班 -->
   <div class="section">
-    <h2>📅 今日值班</h2>
+    <h2><svg class="ic" viewBox="0 0 24 24"><use href="#ic-calendar"/></svg> 今日值班</h2>
     <table id="schedule-today-table"><thead><tr><th>业务组</th><th>主值班人</th><th>主值班电话</th><th>备值班人</th><th>备值班电话</th><th>操作</th></tr></thead><tbody></tbody></table>
     <div class="text-muted mt" id="schedule-today-empty" style="display:none">今日暂无值班安排</div>
   </div>
 
   <!-- 值班表管理 -->
   <div class="section">
-    <h2>📋 值班表管理</h2>
+    <h2><svg class="ic" viewBox="0 0 24 24"><use href="#ic-clipboard"/></svg> 值班表管理</h2>
     <div class="flex mb">
       <div class="month-nav">
-        <button class="btn btn-sm" onclick="navMonth(-1)">◀</button>
-        <span id="schedule-month-label"></span>
-        <button class="btn btn-sm" onclick="navMonth(1)">▶</button>
+        <button class="btn btn-sm" onclick="navMonth(-1)" aria-label="上一个月"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-chevron-left"/></svg></button>
+        <span id="schedule-month-label" aria-live="polite"></span>
+        <button class="btn btn-sm" onclick="navMonth(1)" aria-label="下一个月"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-chevron-right"/></svg></button>
       </div>
-      <button class="btn btn-sm" onclick="exportCSV()">📥 导出 CSV</button>
-      <button class="btn btn-sm btn-primary" onclick="showImport()">📤 导入 CSV</button>
+      <button class="btn btn-sm" onclick="exportCSV()"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-download"/></svg> 导出 CSV</button>
+      <button class="btn btn-sm btn-primary" onclick="showImport()"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-upload"/></svg> 导入 CSV</button>
       <span class="text-muted" id="schedule-month-count"></span>
     </div>
     <div id="schedule-upload-area" style="display:none">
@@ -209,21 +285,21 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 
   <!-- 编辑日志 -->
   <div class="section">
-    <h2>📝 最近编辑日志</h2>
+    <h2><svg class="ic" viewBox="0 0 24 24"><use href="#ic-edit"/></svg> 最近编辑日志</h2>
     <table id="changes-table"><thead><tr><th>时间</th><th>业务组</th><th>日期</th><th>字段</th><th>旧值</th><th>新值</th><th>操作人</th></tr></thead><tbody></tbody></table>
     <div class="text-muted" id="changes-empty" style="display:none">暂无编辑记录</div>
   </div>
 
   <!-- 限流状态 -->
   <div class="section">
-    <h2>🛡 限流状态</h2>
+    <h2><svg class="ic" viewBox="0 0 24 24"><use href="#ic-shield"/></svg> 限流状态</h2>
     <table id="cooldowns-table"><thead><tr><th>键</th><th>过期时间</th><th>剩余</th></tr></thead><tbody></tbody></table>
     <div class="text-muted" id="cooldowns-empty" style="display:none">当前无限流</div>
   </div>
 
   <!-- 呼叫历史 -->
   <div class="section">
-    <h2>📞 呼叫历史</h2>
+    <h2><svg class="ic" viewBox="0 0 24 24"><use href="#ic-phone"/></svg> 呼叫历史</h2>
     <table id="calls-table"><thead><tr><th>时间</th><th>业务组</th><th>告警名称</th><th>等级</th><th>号码</th><th>状态</th><th>时长(s)</th><th>重试</th><th>跳过原因</th></tr></thead><tbody></tbody></table>
     <div class="text-muted" id="calls-empty" style="display:none">暂无呼叫记录</div>
   </div>
@@ -231,12 +307,12 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 </div>
 
 <!-- 编辑主值班人弹窗 -->
-<div class="modal-overlay modal-edit" id="edit-primary-modal">
+<div class="modal-overlay modal-edit" id="edit-primary-modal" role="dialog" aria-modal="true" aria-label="编辑主值班人">
   <div class="modal">
-    <h3>✏ 编辑主值班人</h3>
-    <div class="field"><label>日期</label><input id="ep-date" readonly></div>
-    <div class="field"><label>主值班人</label><input id="ep-name" placeholder="输入姓名"></div>
-    <div class="field"><label>主值班电话</label><input id="ep-phone" placeholder="输入手机号"></div>
+    <h3><svg class="ic" viewBox="0 0 24 24"><use href="#ic-pencil"/></svg> 编辑主值班人</h3>
+    <div class="field"><label for="ep-date">日期</label><input id="ep-date" readonly></div>
+    <div class="field"><label for="ep-name">主值班人</label><input id="ep-name" placeholder="输入姓名"></div>
+    <div class="field"><label for="ep-phone">主值班电话</label><input id="ep-phone" placeholder="输入手机号"></div>
     <div class="flex" style="justify-content:flex-end;margin-top:16px">
       <button class="btn" onclick="closeModal('edit-primary-modal')">取消</button>
       <button class="btn btn-primary" onclick="savePrimary()">保存</button>
@@ -245,13 +321,13 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 </div>
 
 <!-- 编辑备值班人弹窗 -->
-<div class="modal-overlay modal-edit" id="edit-backup-modal">
+<div class="modal-overlay modal-edit" id="edit-backup-modal" role="dialog" aria-modal="true" aria-label="编辑备值班人">
   <div class="modal">
-    <h3>✏ 编辑备值班人</h3>
-    <div class="field"><label>日期</label><input id="eb-date" readonly></div>
-    <div class="field"><label>业务组</label><input id="eb-group" readonly></div>
-    <div class="field"><label>备值班人</label><input id="eb-name" placeholder="输入姓名"></div>
-    <div class="field"><label>备值班电话</label><input id="eb-phone" placeholder="输入手机号"></div>
+    <h3><svg class="ic" viewBox="0 0 24 24"><use href="#ic-pencil"/></svg> 编辑备值班人</h3>
+    <div class="field"><label for="eb-date">日期</label><input id="eb-date" readonly></div>
+    <div class="field"><label for="eb-group">业务组</label><input id="eb-group" readonly></div>
+    <div class="field"><label for="eb-name">备值班人</label><input id="eb-name" placeholder="输入姓名"></div>
+    <div class="field"><label for="eb-phone">备值班电话</label><input id="eb-phone" placeholder="输入手机号"></div>
     <div class="flex" style="justify-content:flex-end;margin-top:16px">
       <button class="btn" onclick="closeModal('edit-backup-modal')">取消</button>
       <button class="btn btn-primary" onclick="saveBackup()">保存</button>
@@ -260,17 +336,17 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
 </div>
 
 <!-- 日值班详情弹窗（内联编辑） -->
-<div class="modal-overlay modal-day" id="day-detail-modal">
+<div class="modal-overlay modal-day" id="day-detail-modal" role="dialog" aria-modal="true" aria-label="值班详情">
   <div class="modal" style="min-width:520px;max-height:80vh;overflow-y:auto">
-    <h3>📅 <span id="dd-date"></span> 值班详情</h3>
+    <h3><svg class="ic" viewBox="0 0 24 24"><use href="#ic-calendar"/></svg> <span id="dd-date"></span> 值班详情</h3>
 
     <!-- 主值班人区 -->
     <div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <strong style="color:var(--green)">主值班人</strong>
         <div>
-          <button class="btn btn-sm" id="dd-primary-edit-btn" onclick="ddTogglePrimaryEdit()">✏</button>
-          <button class="btn btn-sm btn-danger" onclick="ddDeletePrimary()">✕</button>
+          <button class="btn btn-sm" id="dd-primary-edit-btn" onclick="ddTogglePrimaryEdit()" aria-label="编辑主值班人"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-pencil"/></svg></button>
+          <button class="btn btn-sm btn-danger" onclick="ddDeletePrimary()" aria-label="删除主值班人"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-trash"/></svg></button>
         </div>
       </div>
       <div id="dd-primary-view"><span style="color:var(--text-muted);font-size:12px">未设置</span></div>
@@ -301,6 +377,18 @@ label { color:var(--text-muted); font-size:12px; margin-right:8px; }
   </div>
 </div>
 
+<!-- 确认对话框 -->
+<div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-label="确认操作">
+  <div class="modal" style="min-width:320px">
+    <h3 style="color:var(--yellow)" id="confirm-title">确认</h3>
+    <p style="margin:12px 0;font-size:13px;line-height:1.6" id="confirm-message"></p>
+    <div class="flex" style="justify-content:flex-end;gap:8px">
+      <button class="btn" id="confirm-cancel">取消</button>
+      <button class="btn btn-danger" id="confirm-ok">确认</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ===== 工具函数 =====
 function fmtMonth(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
@@ -313,16 +401,43 @@ function sevBadge(level) {
   return labels[level]||level;
 }
 
+// ===== 按钮加载状态 =====
+async function withLoading(btn, fn) {
+  if(!btn) return fn();
+  btn.disabled=true;
+  btn.classList.add('btn-loading');
+  try { return await fn(); } finally { btn.classList.remove('btn-loading'); btn.disabled=false; }
+}
+
+// ===== 自定义确认弹窗 =====
+function showConfirm(message) {
+  return new Promise(resolve => {
+    const overlay=document.getElementById('confirm-modal');
+    document.getElementById('confirm-message').textContent=message;
+    overlay.classList.add('show');
+    const close=function(val){ overlay.classList.remove('show'); resolve(val); };
+    document.getElementById('confirm-ok').onclick=function(){ close(true); };
+    document.getElementById('confirm-cancel').onclick=function(){ close(false); };
+    overlay.onclick=function(e){ if(e.target===overlay) close(false); };
+    const onKey=function(e){ if(e.key==='Escape'){ close(false); document.removeEventListener('keydown',onKey); }};
+    document.addEventListener('keydown',onKey);
+  });
+}
+
 // ===== Toast 通知 =====
 function showToast(message, type, duration) {
   type=type||'info'; duration=duration||3000;
   const container=document.getElementById('toast-container');
-  const icons={success:'✓',error:'✕',warning:'⚠',info:'ℹ'};
+  function iconSVG(name){return '<svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-'+name+'"/></svg>';}
   const toast=document.createElement('div');
   toast.className='toast toast-'+type;
-  toast.innerHTML='<span class="toast-icon">'+(icons[type]||'')+'</span><span>'+esc(message)+'</span>';
+  const iconMap={success:'check',error:'x',warning:'alert',info:'info'};
+  toast.innerHTML='<span class="toast-icon">'+(iconSVG(iconMap[type]||'info'))+'</span><span>'+esc(message)+'</span>';
   container.appendChild(toast);
-  setTimeout(()=>{ toast.classList.add('toast-leave'); setTimeout(()=>toast.remove(),250); },duration);
+  let timer = setTimeout(dismiss, duration);
+  function dismiss() { toast.classList.add('toast-leave'); setTimeout(()=>toast.remove(),250); }
+  toast.addEventListener('mouseenter', ()=>{ clearTimeout(timer); });
+  toast.addEventListener('mouseleave', ()=>{ timer = setTimeout(dismiss, duration); });
 }
 
 // ===== 骨架屏 =====
@@ -359,7 +474,17 @@ document.addEventListener('DOMContentLoaded', ()=>{
   refreshAll().finally(()=>{ hideSkeleton('stats'); setTimeout(autoRefresh, 5000); });
 });
 
+let loadingCount = 0;
+function setLoading(on) {
+  const bar = document.getElementById('loading-bar');
+  if (!bar) return;
+  loadingCount += on ? 1 : -1;
+  if (loadingCount < 0) loadingCount = 0;
+  bar.classList.toggle('active', loadingCount > 0);
+}
+
 async function refreshAll() {
+  setLoading(true);
   try {
     const [health, stats, cooldowns, calls, todaySchedule, changes] = await Promise.all([
       fetch('/api/v1/health').then(r=>r.json()),
@@ -370,7 +495,7 @@ async function refreshAll() {
       fetch('/api/v1/schedule/changes?limit=30').then(r=>r.json()),
     ]);
     document.getElementById('header-info').textContent =
-      `运行时长 ${health.uptime} | ${health.dry_run ? '⚠ DRY RUN' : '🟢 LIVE'}`;
+      `运行时长 ${health.uptime} | ${health.dry_run ? '⚠ DRY RUN' : 'LIVE'}`;
     const banner = document.getElementById('dryrun-banner');
     if (health.dry_run) banner.classList.add('show'); else banner.classList.remove('show');
 
@@ -386,6 +511,7 @@ async function refreshAll() {
     renderTodaySchedule(todaySchedule);
     renderChanges(changes);
   } catch(e) { console.error('刷新失败', e); }
+  finally { setLoading(false); }
 }
 
 async function autoRefresh() {
@@ -438,16 +564,16 @@ function renderTodaySchedule(day) {
   // 主值班人行
   const trPrimary = document.createElement('tr');
   trPrimary.innerHTML = `<td><strong>主值班人</strong></td><td>${esc(day.primary_name||'')}</td><td>${esc(day.primary_phone||'')}</td><td colspan="2">-</td>
-    <td><button class="btn btn-sm" onclick="editPrimary('${day.date}','${jsesc(day.primary_name||'')}','${jsesc(day.primary_phone||'')}')">✏</button>
-    <button class="btn btn-sm btn-danger" onclick="deletePrimary('${day.date}')">✕</button></td>`;
+    <td><button class="btn btn-sm" onclick="editPrimary('${day.date}','${jsesc(day.primary_name||'')}','${jsesc(day.primary_phone||'')}')"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-pencil"/></svg></button>
+    <button class="btn btn-sm btn-danger" onclick="deletePrimary('${day.date}')"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-trash"/></svg></button></td>`;
   tbody.appendChild(trPrimary);
 
   // 备值班人行
   (day.backups||[]).forEach(b => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><span class="text-muted">${esc(b.group_name||'')} 备值</span></td><td>${esc(b.name||'')}</td><td>${esc(b.phone||'')}</td><td colspan="2">-</td>
-      <td><button class="btn btn-sm" onclick="editBackup('${day.date}','${jsesc(b.group_name)}','${jsesc(b.name||'')}','${jsesc(b.phone||'')}')">✏</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteBackup('${day.date}','${jsesc(b.group_name)}')">✕</button></td>`;
+      <td><button class="btn btn-sm" onclick="editBackup('${day.date}','${jsesc(b.group_name)}','${jsesc(b.name||'')}','${jsesc(b.phone||'')}')"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-pencil"/></svg></button>
+      <button class="btn btn-sm btn-danger" onclick="deleteBackup('${day.date}','${jsesc(b.group_name)}')"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-trash"/></svg></button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -580,8 +706,23 @@ function loadMonthSchedule() { loadCalendar(); }
 
 // ===== 编辑弹窗（新模型） =====
 
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) {
+  const overlay=document.getElementById(id);
+  overlay.classList.remove('show');
+  const firstBtn=overlay.querySelector('button');
+  if(firstBtn) firstBtn.blur();
+}
+function openModal(id) {
+  const overlay=document.getElementById(id);
+  overlay.classList.add('show');
+  const firstInput=overlay.querySelector('input:not([readonly])');
+  if(firstInput) firstInput.focus();
+  // Escape 关闭
+  const onKey=function(e){ if(e.key==='Escape'){ closeModal(id); document.removeEventListener('keydown',onKey); }};
+  document.addEventListener('keydown',onKey);
+  // 点击遮罩关闭（不冒泡到 modal 内容）
+  overlay.onclick=function(e){ if(e.target===overlay) closeModal(id); };
+}
 
 // 编辑主值
 function editPrimary(date, name, phone) {
@@ -591,22 +732,26 @@ function editPrimary(date, name, phone) {
   openModal('edit-primary-modal');
 }
 async function savePrimary() {
-  const body = {
-    date: document.getElementById('ep-date').value,
-    name: document.getElementById('ep-name').value,
-    phone: document.getElementById('ep-phone').value,
-  };
-  const resp = await fetch('/api/v1/schedule/primary', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-  if (resp.ok) { closeModal('edit-primary-modal'); refreshAll(); loadCalendar(); showToast('保存成功','success'); }
-  else { const err = await resp.json(); showToast('保存失败: '+(err.error||resp.status),'error'); }
+  await withLoading(document.querySelector('#edit-primary-modal .btn-primary'), async () => {
+    const body = {
+      date: document.getElementById('ep-date').value,
+      name: document.getElementById('ep-name').value,
+      phone: document.getElementById('ep-phone').value,
+    };
+    const resp = await fetch('/api/v1/schedule/primary', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    if (resp.ok) { closeModal('edit-primary-modal'); refreshAll(); loadCalendar(); showToast('保存成功','success'); }
+    else { const err = await resp.json(); showToast('保存失败: '+(err.error||resp.status),'error'); }
+  });
 }
 
 // 删除主值
 async function deletePrimary(date) {
-  if (!confirm(`确认删除 ${date} 的主值班人？`)) return;
-  const resp = await fetch('/api/v1/schedule/primary?date='+date, { method:'DELETE' });
-  if (resp.ok) { refreshAll(); loadCalendar(); showToast('删除成功','success'); }
-  else { const err = await resp.json(); showToast('删除失败: '+(err.error||resp.status),'error'); }
+  if (!await showConfirm(`确认删除 ${date} 的主值班人？`)) return;
+  await withLoading(null, async () => {
+    const resp = await fetch('/api/v1/schedule/primary?date='+date, { method:'DELETE' });
+    if (resp.ok) { refreshAll(); loadCalendar(); showToast('删除成功','success'); }
+    else { const err = await resp.json(); showToast('删除失败: '+(err.error||resp.status),'error'); }
+  });
 }
 
 // 编辑备值
@@ -618,20 +763,22 @@ function editBackup(date, group, name, phone) {
   openModal('edit-backup-modal');
 }
 async function saveBackup() {
-  const body = {
-    date: document.getElementById('eb-date').value,
-    group_name: document.getElementById('eb-group').value,
-    name: document.getElementById('eb-name').value,
-    phone: document.getElementById('eb-phone').value,
-  };
-  const resp = await fetch('/api/v1/schedule/backup', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-  if (resp.ok) { closeModal('edit-backup-modal'); refreshAll(); loadCalendar(); showToast('保存成功','success'); }
-  else { const err = await resp.json(); showToast('保存失败: '+(err.error||resp.status),'error'); }
+  await withLoading(document.querySelector('#edit-backup-modal .btn-primary'), async () => {
+    const body = {
+      date: document.getElementById('eb-date').value,
+      group_name: document.getElementById('eb-group').value,
+      name: document.getElementById('eb-name').value,
+      phone: document.getElementById('eb-phone').value,
+    };
+    const resp = await fetch('/api/v1/schedule/backup', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    if (resp.ok) { closeModal('edit-backup-modal'); refreshAll(); loadCalendar(); showToast('保存成功','success'); }
+    else { const err = await resp.json(); showToast('保存失败: '+(err.error||resp.status),'error'); }
+  });
 }
 
 // 删除备值
 async function deleteBackup(date, group) {
-  if (!confirm(`确认删除 ${date} ${group} 的备值班人？`)) return;
+  if (!await showConfirm(`确认删除 ${date} ${group} 的备值班人？`)) return;
   const resp = await fetch('/api/v1/schedule/backup?date='+date+'&group='+encodeURIComponent(group), { method:'DELETE' });
   if (resp.ok) { refreshAll(); loadCalendar(); showToast('删除成功','success'); }
   else { const err = await resp.json(); showToast('删除失败: '+(err.error||resp.status),'error'); }
@@ -675,10 +822,11 @@ function ddCancelPrimaryEdit() {
 }
 
 async function ddSavePrimary() {
-  const name = document.getElementById('dd-ep-name').value;
-  const phone = document.getElementById('dd-ep-phone').value;
-  if (!phone) { showToast('请输入手机号','error'); return; }
-  const resp = await fetch('/api/v1/schedule/primary', {
+  await withLoading(document.querySelector('#dd-primary-edit .btn-primary'), async () => {
+    const name = document.getElementById('dd-ep-name').value;
+    const phone = document.getElementById('dd-ep-phone').value;
+    if (!phone) { showToast('请输入手机号','error'); return; }
+    const resp = await fetch('/api/v1/schedule/primary', {
     method:'PUT', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({date:ddDate, name, phone})
   });
@@ -692,10 +840,11 @@ async function ddSavePrimary() {
     const err = await resp.json();
     showToast('保存失败: '+(err.error||resp.status),'error');
   }
+  });
 }
 
 async function ddDeletePrimary() {
-  if (!confirm(`确认删除 ${ddDate} 的主值班人？`)) return;
+  if (!await showConfirm(`确认删除 ${ddDate} 的主值班人？`)) return;
   const resp = await fetch('/api/v1/schedule/primary?date='+ddDate, { method:'DELETE' });
   if (resp.ok) {
     showToast('删除成功','success');
@@ -728,8 +877,8 @@ function ddAppendBackupRow(list, b, idx) {
   const viewDiv = document.createElement('div');
   viewDiv.style.cssText = 'flex:1;display:flex;justify-content:space-between;align-items:center';
   viewDiv.innerHTML = `<div><strong>${esc(b.group_name||'')}</strong> ${esc(b.name||'-')} (${esc(b.phone||'')})</div>
-    <div><button class="btn btn-sm" onclick="ddBackupEdit(${idx})">✏</button>
-    <button class="btn btn-sm btn-danger" onclick="ddBackupDelete('${jsesc(b.group_name)}')">✕</button></div>`;
+    <div><button class="btn btn-sm" onclick="ddBackupEdit(${idx})"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-pencil"/></svg></button>
+    <button class="btn btn-sm btn-danger" onclick="ddBackupDelete('${jsesc(b.group_name)}')"><svg class="ic-sm" viewBox="0 0 24 24"><use href="#ic-trash"/></svg></button></div>`;
 
   const editDiv = document.createElement('div');
   editDiv.id = 'dd-bedit-'+idx;
@@ -757,7 +906,8 @@ function ddBackupCancel(idx) {
 }
 
 async function ddBackupSave(idx, group) {
-  const name = document.getElementById('dd-be-name-'+idx).value;
+  await withLoading(document.querySelector('#dd-bedit-'+idx+' .btn-primary'), async () => {
+    const name = document.getElementById('dd-be-name-'+idx).value;
   const phone = document.getElementById('dd-be-phone-'+idx).value;
   if (!phone) { showToast('请输入手机号','error'); return; }
   const resp = await fetch('/api/v1/schedule/backup', {
@@ -775,11 +925,13 @@ async function ddBackupSave(idx, group) {
     const err = await resp.json();
     showToast('保存失败: '+(err.error||resp.status),'error');
   }
+  });
 }
 
 async function ddBackupDelete(group) {
-  if (!confirm(`确认删除 ${ddDate} ${group} 的备值班人？`)) return;
-  const resp = await fetch('/api/v1/schedule/backup?date='+ddDate+'&group='+encodeURIComponent(group), { method:'DELETE' });
+  if (!await showConfirm(`确认删除 ${ddDate} ${group} 的备值班人？`)) return;
+  await withLoading(null, async () => {
+    const resp = await fetch('/api/v1/schedule/backup?date='+ddDate+'&group='+encodeURIComponent(group), { method:'DELETE' });
   if (resp.ok) {
     showToast('删除成功','success');
     const calResp = await fetch(`/api/v1/schedule/calendar?month=${ddDate.slice(0,7)}`);
@@ -791,6 +943,7 @@ async function ddBackupDelete(group) {
     const err = await resp.json();
     showToast('删除失败: '+(err.error||resp.status),'error');
   }
+  });
 }
 
 function ddAddBackup() {
@@ -805,7 +958,8 @@ function ddCancelNewBackup() {
 }
 
 async function ddSaveNewBackup() {
-  const group = document.getElementById('dd-nb-group').value;
+  await withLoading(document.querySelector('#dd-new-backup .btn-primary'), async () => {
+    const group = document.getElementById('dd-nb-group').value;
   const name = document.getElementById('dd-nb-name').value;
   const phone = document.getElementById('dd-nb-phone').value;
   if (!group || !phone) { showToast('业务组和手机号不能为空','error'); return; }
@@ -825,6 +979,7 @@ async function ddSaveNewBackup() {
     const err = await resp.json();
     showToast('添加失败: '+(err.error||resp.status),'error');
   }
+  });
 }
 
 // 导航月份（带滑动动画）
@@ -872,6 +1027,7 @@ async function handleFile(file) {
   loadMonthSchedule();
   if (resp.ok) { showToast('导入成功: '+result.imported+'/'+result.total+' 条','success'); }
   else { showToast('导入失败: '+result.error,'error'); }
+  });
 }
 
 // 初始化日历
