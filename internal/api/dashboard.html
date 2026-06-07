@@ -1027,7 +1027,6 @@ async function handleFile(file) {
   loadMonthSchedule();
   if (resp.ok) { showToast('导入成功: '+result.imported+'/'+result.total+' 条','success'); }
   else { showToast('导入失败: '+result.error,'error'); }
-  });
 }
 
 // 初始化日历
