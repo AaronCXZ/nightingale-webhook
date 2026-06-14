@@ -2,10 +2,7 @@
 config.yaml
 
 # SQLite 数据库
-data/webhook.db
-data/webhook.db-wal
-data/webhook.db-shm
-data/state_store.db/
+data/
 
 # 构建产物
 build/

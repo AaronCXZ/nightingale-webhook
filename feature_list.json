@@ -1,0 +1,95 @@
+{
+  "project": "夜莺告警 → 阿里云语音通知 Webhook 桥接服务",
+  "language": "Go",
+  "currentFeature": null,
+  "features": [
+    {
+      "id": "core-webhook",
+      "name": "告警接收与处理核心",
+      "status": "done",
+      "dependencies": [],
+      "files": ["internal/webhook/handler.go", "internal/alert/event.go"],
+      "notes": "接收夜莺 POST /api/v1/nightingale/webhook，过滤恢复/严重等级/hash 去重/组限流，呼叫并记录"
+    },
+    {
+      "id": "store-sqlite",
+      "name": "SQLite 持久化",
+      "status": "done",
+      "dependencies": ["core-webhook"],
+      "files": ["internal/store/"],
+      "notes": "Store 接口抽象 + SQLite 实现（modernc.org/sqlite，CGO-free）。单写者模式"
+    },
+    {
+      "id": "caller-aliyun",
+      "name": "阿里云语音呼叫",
+      "status": "done",
+      "dependencies": ["core-webhook"],
+      "files": ["internal/notifier/"],
+      "notes": "Dyvmsapi SingleCallByTts，指数退避重试，MockCaller 用于 dry-run"
+    },
+    {
+      "id": "poller",
+      "name": "呼叫结果回查",
+      "status": "done",
+      "dependencies": ["caller-aliyun", "store-sqlite"],
+      "files": ["internal/notifier/poller.go"],
+      "notes": "后台每 15s 轮询待回查记录，30s/60s/120s 三级回查间隔"
+    },
+    {
+      "id": "schedule-csv",
+      "name": "值班表 CSV 导入/导出",
+      "status": "done",
+      "dependencies": ["store-sqlite"],
+      "files": ["internal/schedule/"],
+      "notes": "格式: type,date,group_name,name,phone。支持 primary/backup 双类型"
+    },
+    {
+      "id": "schedule-calendar",
+      "name": "月历视图与在线编辑",
+      "status": "done",
+      "dependencies": ["schedule-csv"],
+      "files": ["internal/api/server.go", "internal/api/dashboard.html"],
+      "notes": "月历渲染、日详情弹窗内联编辑、今日值班表"
+    },
+    {
+      "id": "dashboard-ui",
+      "name": "Web 监控面板",
+      "status": "done",
+      "dependencies": ["core-webhook", "schedule-calendar"],
+      "files": ["internal/api/dashboard.html"],
+      "notes": "嵌入式 HTML（go:embed），统计数据/呼叫历史/限流状态/值班管理一体"
+    },
+    {
+      "id": "api-server",
+      "name": "HTTP API 服务器",
+      "status": "done",
+      "dependencies": ["core-webhook", "store-sqlite"],
+      "files": ["internal/api/"],
+      "notes": "中间件链（日志/恢复/请求 ID/CORS），路由编排，JSON 响应"
+    },
+    {
+      "id": "config",
+      "name": "配置加载与校验",
+      "status": "done",
+      "dependencies": [],
+      "files": ["internal/config/"],
+      "notes": "YAML 配置，默认值（端口 8080/严重等级 2+/冷却 15m），dry-run 模式可选"
+    },
+    {
+      "id": "dashboard-ui-polish",
+      "name": "面板 UI 优化（SVG/无障碍/交互）",
+      "status": "done",
+      "dependencies": ["dashboard-ui"],
+      "files": ["internal/api/dashboard.html"],
+      "notes": "SVG 图标替换 emoji、aria/role 无障碍、自定义确认弹窗、按钮加载态、触屏适配、加载指示条"
+    },
+    {
+      "id": "tests",
+      "name": "单元测试覆盖",
+      "status": "done",
+      "dependencies": ["core-webhook", "store-sqlite", "caller-aliyun"],
+      "files": ["internal/*/*_test.go"],
+      "notes": "7 包测试，覆盖 handler/store/schedule/config/notifier/api/alert"
+    }
+  ]
+}

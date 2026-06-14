@@ -1,34 +1,29 @@
-# CLAUDE.md
+# AGENTS.md
 
-Claude Code (claude.ai/code) 在此仓库工作时的指引。
-
-## 启动工作流
-
-新会话开始后的标准流程：
-
-1. **检查状态** — 读 `progress.md` 和 `feature_list.json` 了解当前进度
-2. **运行测试** — `make test` 确认基线绿
-3. **选择任务** — 从 `feature_list.json` 中选一个 pending 或 in_progress 的功能
-4. **实现/修复** — 遵循现有模式（Store 接口、Caller 接口、裸 SQL）
-5. **验证** — 修改后 `go build ./...` 编译通过 + `make test` 全绿
-6. **更新状态** — 修改 `progress.md` 和 `feature_list.json`
-7. **提交** — `git commit`，需提交时告知用户
-
-## 完成定义
-
-- `go build ./...` 通过
-- `make test` 全绿
-- `feature_list.json` 对应项更新状态
+Codex (Codex.ai/code) 在此仓库工作时的指引。
 
 ## 构建、测试、运行命令
 
 ```bash
+# 编译当前平台（调试用）
 go build -o build/webhook ./cmd/webhook
+
+# 交叉编译 macOS ARM + Linux AMD64（静态链接，CGO_ENABLED=0）
 make build-all
-make test
+
+# 运行全部测试
+make test                            # go test ./internal/... -count=1
+
+# 运行单个包测试
 go test ./internal/store/... -count=1 -v
+
+# 运行单个测试
 go test ./internal/api/... -count=1 -v -run TestHandleHealth
-make run
+
+# dry-run 模式运行（不会真实拨打电话）
+make run                             # go run ./cmd/webhook -config config.example.yaml -dry-run
+
+# 生产模式
 ./build/webhook -config config.yaml
 ```
 
@@ -77,6 +72,8 @@ internal/
 - **Store 接口** — 所有 DB 操作抽象化；生产用 SQLite（`modernc.org/sqlite`，纯 Go 无 CGO）
 - **Caller 接口** — 语音呼叫抽象；dry-run 模式用 MockCaller
 - **嵌入式 HTML** — `//go:embed dashboard.html` 把完整面板打进单二进制
+- **无 ORM** — 裸 SQL + `database/sql`
+- **全部时间戳** — UTC，`time.RFC3339` 格式
 
 ### 开发注意事项
 
@@ -84,13 +81,4 @@ internal/
 - **CGO_ENABLED=0** — 所有构建纯 Go，无 C 依赖。SQLite 用 `modernc.org/sqlite`（C → Go 转译）。
 - **SQLite 单写者**：`db.SetMaxOpenConns(1)` — 该场景下安全。
 - **dashboard.html 嵌入编译期**：修改 html 后需重新 `go build`。
-
-## 状态文件
-
-| 文件 | 用途 |
-|------|------|
-| `feature_list.json` | 功能清单、状态、依赖关系 |
-| `progress.md` | 当前进度、最近完成、下一步 |
-| `session-handoff.md` | 跨会话恢复点（会话结束时更新） |
-| `init.sh` | 一键环境检查与验证 |
-| `CLAUDE.md` | 本文件（代理入口指引） |
+- **配置默认值** 在 `internal/config/config.go`：端口 8080、严重等级 2+、冷却 15m 等。
